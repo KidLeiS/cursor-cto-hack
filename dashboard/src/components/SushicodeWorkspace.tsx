@@ -30,6 +30,7 @@ import type {
   DocumentationAsset,
   DocumentationNode,
   Feature,
+  RoadmapTask,
   TaskTrackerItem,
   TaskTrackerPriority,
   WorkplanStep,
@@ -67,6 +68,49 @@ const TRACKER_PRIORITY: Record<TaskTrackerPriority, number> = {
 type TrackerApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; data?: TaskTrackerItem };
+
+type TaskDraft = {
+  title: string;
+  description: string;
+  priority: TaskTrackerPriority;
+  scheduled_for: string;
+  due_on: string;
+  estimate_minutes: string;
+};
+
+type TaskActionResponse = {
+  item: TaskTrackerItem;
+  documentation: DocumentationNode;
+  documentation_changes: Array<{
+    operation: "created" | "updated";
+    node: DocumentationNode;
+  }>;
+  agent_summary: string;
+  roadmap: RoadmapTask;
+};
+
+type TaskActionReceipt = Pick<
+  TaskActionResponse,
+  "documentation_changes" | "agent_summary" | "roadmap"
+> & { taskId: string };
+
+function taskDraftFrom(item: TaskTrackerItem): TaskDraft {
+  return {
+    title: item.title,
+    description: item.description,
+    priority: item.priority,
+    scheduled_for: item.scheduled_for,
+    due_on: item.due_on ?? "",
+    estimate_minutes: item.estimate_minutes?.toString() ?? "",
+  };
+}
+
+function priorityFromLevel(level: number): TaskTrackerPriority {
+  if (level >= 5) return "urgent";
+  if (level === 4) return "high";
+  if (level === 3) return "medium";
+  return "low";
+}
 
 async function trackerRequest<T>(
   url: string,
@@ -343,7 +387,7 @@ function trackerTimelineItem(item: TaskTrackerItem): TimelineItem {
     title: item.title,
     note: item.description,
     priority: TRACKER_PRIORITY[item.priority],
-    kind: item.status === "actioned" ? "task" : "note",
+    kind: ["actioned", "completed"].includes(item.status) ? "task" : "note",
     status: item.status,
     scheduledFor: item.scheduled_for,
   };
@@ -466,6 +510,12 @@ export function SushicodeWorkspace({
   const [recordingTasks, setRecordingTasks] = useState(false);
   const [transcribingTasks, setTranscribingTasks] = useState(false);
   const [actioningTaskId, setActioningTaskId] = useState<string | null>(null);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dropTaskId, setDropTaskId] = useState<string | null>(null);
+  const [actionReceipt, setActionReceipt] =
+    useState<TaskActionReceipt | null>(null);
 
   const [features, setFeatures] = useState(bundle.features);
   const [steps, setSteps] = useState(bundle.steps);
@@ -1071,10 +1121,126 @@ export function SushicodeWorkspace({
     );
   }
 
+  function replaceTrackerItem(updated: TaskTrackerItem) {
+    setTrackerItems((current) =>
+      current.map((candidate) =>
+        candidate.id === updated.id ? updated : candidate,
+      ),
+    );
+    setTimeline((current) =>
+      current.map((candidate) =>
+        candidate.id === `tracker-${updated.id}`
+          ? trackerTimelineItem(updated)
+          : candidate,
+      ),
+    );
+    setTaskDraft(taskDraftFrom(updated));
+  }
+
+  async function mutateTrackerItem(
+    item: TaskTrackerItem,
+    body: Record<string, unknown>,
+  ): Promise<TaskTrackerItem | null> {
+    setSavingTaskId(item.id);
+    const result = await trackerRequest<TaskTrackerItem>(
+      `/api/task-tracker/${item.id}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    );
+    setSavingTaskId(null);
+    if (!result.ok) {
+      if (result.data) replaceTrackerItem(result.data);
+      setToast(result.error);
+      return null;
+    }
+    replaceTrackerItem(result.data);
+    return result.data;
+  }
+
+  async function saveTaskDraft(item: TaskTrackerItem) {
+    if (!taskDraft) return;
+    const estimate = taskDraft.estimate_minutes.trim()
+      ? Number(taskDraft.estimate_minutes)
+      : null;
+    if (estimate !== null && (!Number.isInteger(estimate) || estimate <= 0)) {
+      setToast("Effort must be a positive number of minutes.");
+      return;
+    }
+    const updated = await mutateTrackerItem(item, {
+      operation: "edit",
+      expected_lock_version: item.lock_version,
+      title: taskDraft.title,
+      description: taskDraft.description,
+      priority: taskDraft.priority,
+      scheduled_for: taskDraft.scheduled_for,
+      due_on: taskDraft.due_on || null,
+      estimate_minutes: estimate,
+    });
+    if (updated) setToast("Task edits saved");
+  }
+
+  async function completeTrackerItem(item: TaskTrackerItem) {
+    const updated = await mutateTrackerItem(item, {
+      operation: "complete",
+      expected_lock_version: item.lock_version,
+    });
+    if (updated) setToast("Task marked complete");
+  }
+
+  async function deleteTrackerItem(item: TaskTrackerItem) {
+    if (!window.confirm(`Delete “${item.title}”?`)) return;
+    setSavingTaskId(item.id);
+    const result = await trackerRequest<TaskTrackerItem>(
+      `/api/task-tracker/${item.id}`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({ expected_lock_version: item.lock_version }),
+      },
+    );
+    setSavingTaskId(null);
+    if (!result.ok) {
+      if (result.data) replaceTrackerItem(result.data);
+      setToast(result.error);
+      return;
+    }
+    const remaining = trackerItems.filter(
+      (candidate) => candidate.id !== item.id,
+    );
+    setTrackerItems(remaining);
+    setTimeline(buildTimeline(remaining));
+    setOpenTimelineId(null);
+    setActionReceipt(null);
+    setToast("Task deleted");
+  }
+
+  async function rescheduleTrackerItem(
+    item: TaskTrackerItem,
+    scheduledFor: string,
+  ) {
+    if (item.scheduled_for === scheduledFor) return;
+    const dueOn =
+      item.due_on && item.due_on >= scheduledFor
+        ? item.due_on
+        : scheduledFor;
+    const updated = await mutateTrackerItem(item, {
+      operation: "reschedule",
+      expected_lock_version: item.lock_version,
+      scheduled_for: scheduledFor,
+      due_on: dueOn,
+    });
+    if (updated) {
+      const next = trackerItems.map((candidate) =>
+        candidate.id === updated.id ? updated : candidate,
+      );
+      setTimeline(buildTimeline(next));
+      setToast(`Rescheduled to ${formatTaskTrackerDate(scheduledFor, today)}`);
+    }
+  }
+
   async function actionTrackerItem(item: TaskTrackerItem) {
     setActioningTaskId(item.id);
-    setToast("Updating documentation…");
-    const result = await trackerRequest<{ item: TaskTrackerItem }>(
+    setActionReceipt(null);
+    setToast("Reviewing project documentation…");
+    const result = await trackerRequest<TaskActionResponse>(
       `/api/task-tracker/${item.id}/action`,
       {
         method: "POST",
@@ -1085,22 +1251,47 @@ export function SushicodeWorkspace({
 
     const updated = result.ok ? result.data.item : result.data;
     if (updated) {
-      setTrackerItems((current) =>
-        current.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
-      );
-      setTimeline((current) =>
-        current.map((candidate) =>
-          candidate.id === `tracker-${updated.id}`
-            ? trackerTimelineItem(updated)
-            : candidate,
-        ),
-      );
+      replaceTrackerItem(updated);
     }
     if (!result.ok) {
       setToast(result.error);
       return;
     }
-    setToast("Documentation updated · roadmap task ready");
+    const changedNodes = result.data.documentation_changes.map(
+      (change) => change.node,
+    );
+    setNodes((current) => {
+      const byId = new Map(current.map((node) => [node.id, node]));
+      for (const node of changedNodes) byId.set(node.id, node);
+      return [...byId.values()];
+    });
+    setPositions((current) => {
+      const next = { ...current };
+      for (const node of changedNodes) {
+        next[node.id] = {
+          x: node.canvas_x,
+          y: node.canvas_y,
+        };
+      }
+      return next;
+    });
+    if (changedNodes[0]) {
+      setSelectedId(changedNodes[0].id);
+      if (changedNodes[0].parent_id) {
+        setExpanded((current) =>
+          new Set(current).add(changedNodes[0].parent_id!),
+        );
+      }
+    }
+    setActionReceipt({
+      taskId: item.id,
+      documentation_changes: result.data.documentation_changes,
+      agent_summary: result.data.agent_summary,
+      roadmap: result.data.roadmap,
+    });
+    setToast(
+      `Updated ${changedNodes.length} ${changedNodes.length === 1 ? "document" : "documents"} · roadmap ready`,
+    );
   }
 
   function createFeature() {
@@ -1141,6 +1332,15 @@ export function SushicodeWorkspace({
   const openTracker = openTimelineId?.startsWith("tracker-")
     ? trackerItems.find((item) => `tracker-${item.id}` === openTimelineId) ?? null
     : null;
+  const openActionReceipt =
+    openTracker && actionReceipt?.taskId === openTracker.id
+      ? actionReceipt
+      : null;
+
+  useEffect(() => {
+    setTaskDraft(openTracker ? taskDraftFrom(openTracker) : null);
+  }, [openTracker?.id, openTracker?.lock_version]);
+
   const activePlans = new Set(
     bundle.workplans
       .filter((plan) => plan.feature_id === activeFeatureId)
@@ -1363,33 +1563,140 @@ export function SushicodeWorkspace({
                 <span className={`kind-dot ${openTimeline.kind}`} />
                 <span>{openTimeline.status}</span>
               </div>
-              <h2>{openTimeline.title}</h2>
+              {openTracker && taskDraft ? (
+                <input
+                  aria-label="Task title"
+                  className="task-title-input"
+                  disabled={!["pending", "failed"].includes(openTracker.status)}
+                  maxLength={200}
+                  onChange={(event) =>
+                    setTaskDraft((current) =>
+                      current
+                        ? { ...current, title: event.target.value }
+                        : current,
+                    )
+                  }
+                  value={taskDraft.title}
+                />
+              ) : (
+                <h2>{openTimeline.title}</h2>
+              )}
               <label className="note-label">
                 Note
                 <textarea
                   onChange={(event) =>
-                    setTimeline((current) =>
-                      current.map((item) =>
-                        item.id === openTimeline.id
-                          ? { ...item, note: event.target.value }
-                          : item,
-                      ),
+                    setTaskDraft((current) =>
+                      current
+                        ? { ...current, description: event.target.value }
+                        : current,
                     )
                   }
-                  value={openTimeline.note}
+                  disabled={
+                    !openTracker ||
+                    !["pending", "failed"].includes(openTracker.status)
+                  }
+                  value={taskDraft?.description ?? openTimeline.note}
                 />
               </label>
+              {openTracker && taskDraft ? (
+                <div className="task-schedule-fields">
+                  <label>
+                    Scheduled
+                    <input
+                      disabled={[
+                        "actioning",
+                        "cancelled",
+                        "completed",
+                      ].includes(openTracker.status)}
+                      onChange={(event) =>
+                        setTaskDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                scheduled_for: event.target.value,
+                              }
+                            : current,
+                        )
+                      }
+                      type="date"
+                      value={taskDraft.scheduled_for}
+                    />
+                  </label>
+                  <label>
+                    Due
+                    <input
+                      disabled={[
+                        "actioning",
+                        "cancelled",
+                        "completed",
+                      ].includes(openTracker.status)}
+                      min={taskDraft.scheduled_for}
+                      onChange={(event) =>
+                        setTaskDraft((current) =>
+                          current
+                            ? { ...current, due_on: event.target.value }
+                            : current,
+                        )
+                      }
+                      type="date"
+                      value={taskDraft.due_on}
+                    />
+                  </label>
+                  <label>
+                    Minutes
+                    <input
+                      disabled={
+                        !["pending", "failed"].includes(openTracker.status)
+                      }
+                      min="1"
+                      onChange={(event) =>
+                        setTaskDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                estimate_minutes: event.target.value,
+                              }
+                            : current,
+                        )
+                      }
+                      placeholder="—"
+                      type="number"
+                      value={taskDraft.estimate_minutes}
+                    />
+                  </label>
+                </div>
+              ) : null}
               <div className="context-card">
                 <Icon name="sparkle" />
                 <div>
                   <strong>
-                    {openTracker ? "Documentation update" : "Context understood"}
+                    {openActionReceipt
+                      ? "Action complete"
+                      : openTracker
+                        ? "Documentation plan"
+                        : "Context understood"}
                   </strong>
                   <p>
-                    {openTracker
-                      ? openTracker.documentation_update
+                    {openActionReceipt
+                      ? openActionReceipt.agent_summary
+                      : openTracker
+                        ? openTracker.documentation_update
                       : "Linked to the current project plan and visible agent activity."}
                   </p>
+                  {openActionReceipt ? (
+                    <ul className="task-action-results">
+                      {openActionReceipt.documentation_changes.map((change) => (
+                        <li key={change.node.id}>
+                          {change.operation === "created" ? "Created" : "Updated"}{" "}
+                          <strong>{change.node.title}</strong>
+                        </li>
+                      ))}
+                      <li>
+                        Roadmap <strong>{openActionReceipt.roadmap.title}</strong>{" "}
+                        is {openActionReceipt.roadmap.status}
+                      </li>
+                    </ul>
+                  ) : null}
                 </div>
               </div>
               <div className="detail-meta">
@@ -1398,15 +1705,27 @@ export function SushicodeWorkspace({
                   {[1, 2, 3, 4, 5].map((level) => (
                     <button
                       aria-label={`Set priority ${level}`}
-                      className={level <= openTimeline.priority ? "filled" : ""}
+                      className={
+                        level <=
+                        (taskDraft
+                          ? TRACKER_PRIORITY[taskDraft.priority]
+                          : openTimeline.priority)
+                          ? "filled"
+                          : ""
+                      }
+                      disabled={
+                        !openTracker ||
+                        !["pending", "failed"].includes(openTracker.status)
+                      }
                       key={level}
                       onClick={() =>
-                        setTimeline((current) =>
-                          current.map((item) =>
-                            item.id === openTimeline.id
-                              ? { ...item, priority: level }
-                              : item,
-                          ),
+                        setTaskDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                priority: priorityFromLevel(level),
+                              }
+                            : current,
                         )
                       }
                       type="button"
@@ -1415,25 +1734,69 @@ export function SushicodeWorkspace({
                 </div>
               </div>
               {openTracker ? (
-                <button
-                  className="add-button task-action-button"
-                  disabled={
-                    actioningTaskId !== null ||
-                    openTracker.status === "actioned" ||
-                    openTracker.status === "cancelled"
-                  }
-                  onClick={() => void actionTrackerItem(openTracker)}
-                  type="button"
-                >
-                  <Icon name={openTracker.status === "actioned" ? "check" : "sparkle"} />
-                  {actioningTaskId === openTracker.id
-                    ? "Updating documentation…"
-                    : openTracker.status === "actioned"
-                      ? "Ready on roadmap"
-                      : openTracker.status === "failed"
-                        ? "Retry action"
-                        : "Action task"}
-                </button>
+                <div className="task-detail-actions">
+                  <button
+                    className="add-button"
+                    disabled={
+                      savingTaskId !== null ||
+                      !["pending", "failed"].includes(openTracker.status)
+                    }
+                    onClick={() => void saveTaskDraft(openTracker)}
+                    type="button"
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="add-button"
+                    disabled={
+                      savingTaskId !== null ||
+                      ["actioning", "cancelled", "completed"].includes(
+                        openTracker.status,
+                      )
+                    }
+                    onClick={() => void completeTrackerItem(openTracker)}
+                    type="button"
+                  >
+                    <Icon name="check" />{" "}
+                    {openTracker.status === "completed" ? "Completed" : "Complete"}
+                  </button>
+                  <button
+                    className="add-button task-action-button"
+                    disabled={
+                      actioningTaskId !== null ||
+                      openTracker.status === "actioned" ||
+                      openTracker.status === "cancelled" ||
+                      openTracker.status === "completed"
+                    }
+                    onClick={() => void actionTrackerItem(openTracker)}
+                    type="button"
+                  >
+                    <Icon
+                      name={
+                        openTracker.status === "actioned" ? "check" : "sparkle"
+                      }
+                    />
+                    {actioningTaskId === openTracker.id
+                      ? "Reviewing docs…"
+                      : openTracker.status === "actioned"
+                        ? "Ready on roadmap"
+                        : openTracker.status === "failed"
+                          ? "Retry action"
+                          : "Action task"}
+                  </button>
+                  <button
+                    aria-label="Delete task"
+                    className="task-delete-button"
+                    disabled={
+                      savingTaskId !== null ||
+                      openTracker.status === "actioning"
+                    }
+                    onClick={() => void deleteTrackerItem(openTracker)}
+                    type="button"
+                  >
+                    <Icon name="trash" /> Delete
+                  </button>
+                </div>
               ) : null}
             </div>
           ) : (
@@ -1514,8 +1877,45 @@ export function SushicodeWorkspace({
                   <strong>{granularity === "hours" ? "Today" : granularity === "days" ? "This week" : "Q3"}</strong>
                   <span>{fullCalendarDate(today)}</span>
                 </div>
-                {orderedTimeline.map((item, index) => (
-                  <div className="timeline-slot" key={item.id}>
+                {orderedTimeline.map((item, index) => {
+                  const tracker = item.id.startsWith("tracker-")
+                    ? trackerItems.find(
+                        (candidate) => `tracker-${candidate.id}` === item.id,
+                      )
+                    : null;
+                  const canDrag =
+                    tracker &&
+                    !["actioning", "cancelled", "completed"].includes(
+                      tracker.status,
+                    );
+                  return (
+                  <div
+                    className={
+                      dropTaskId === tracker?.id
+                        ? "timeline-slot drop-target"
+                        : "timeline-slot"
+                    }
+                    key={item.id}
+                    onDragOver={(event) => {
+                      if (!draggedTaskId || !tracker || !canDrag) return;
+                      event.preventDefault();
+                      setDropTaskId(tracker.id);
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const source = trackerItems.find(
+                        (candidate) => candidate.id === draggedTaskId,
+                      );
+                      setDraggedTaskId(null);
+                      setDropTaskId(null);
+                      if (source && tracker) {
+                        void rescheduleTrackerItem(
+                          source,
+                          tracker.scheduled_for,
+                        );
+                      }
+                    }}
+                  >
                     <span className="time-label">
                       {priorityMode
                         ? `P${6 - item.priority}`
@@ -1523,8 +1923,27 @@ export function SushicodeWorkspace({
                     </span>
                     <span className="timeline-rule" />
                     <button
-                      className={`timeline-card ${item.kind}`}
+                      className={`timeline-card ${item.kind}${draggedTaskId === tracker?.id ? " dragging" : ""}`}
+                      draggable={Boolean(canDrag)}
+                      onDragEnd={() => {
+                        setDraggedTaskId(null);
+                        setDropTaskId(null);
+                      }}
+                      onDragStart={(event) => {
+                        if (!tracker || !canDrag) {
+                          event.preventDefault();
+                          return;
+                        }
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", tracker.id);
+                        setDraggedTaskId(tracker.id);
+                      }}
                       onClick={() => setOpenTimelineId(item.id)}
+                      title={
+                        canDrag
+                          ? "Open task or drag onto another date to reschedule"
+                          : "Open task"
+                      }
                       type="button"
                     >
                       <span className={`kind-dot ${item.kind}`} />
@@ -1535,7 +1954,8 @@ export function SushicodeWorkspace({
                       <Icon name="note" />
                     </button>
                   </div>
-                ))}
+                  );
+                })}
                 <button
                   className="empty-slot"
                   onClick={() => taskInputRef.current?.focus()}
