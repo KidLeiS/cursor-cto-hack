@@ -4,12 +4,15 @@ import type {
   TaskTrackerItem,
   TaskTrackerStatus,
 } from "@shared/types";
-import {
-  createDocumentationNode,
-  updateDocumentationContent,
-} from "./documentation-actions";
 import { getSupabase } from "./data";
 import { createRoadmapTask } from "./roadmap-actions";
+import {
+  DocumentationAgentError,
+  runDocumentationAgent,
+  type DocumentationAgentChange,
+} from "./task-tracker-documentation-agent";
+
+export { upsertTaskDocumentationSection } from "./task-tracker-documentation";
 
 export type TaskTrackerActionResult =
   | {
@@ -17,6 +20,8 @@ export type TaskTrackerActionResult =
       data: {
         item: TaskTrackerItem;
         documentation: DocumentationNode;
+        documentation_changes: DocumentationAgentChange[];
+        agent_summary: string;
         roadmap: RoadmapTask;
       };
     }
@@ -34,41 +39,6 @@ class TaskTrackerPipelineError extends Error {
   ) {
     super(message);
   }
-}
-
-function taskSection(item: TaskTrackerItem): string {
-  const due = item.due_on ? `\n- Due: ${item.due_on}` : "";
-  return [
-    `<!-- task-tracker:${item.id}:start -->`,
-    `## ${item.title}`,
-    "",
-    `- Priority: ${item.priority}`,
-    `- Scheduled: ${item.scheduled_for}${due}`,
-    "",
-    item.documentation_update.trim(),
-    `<!-- task-tracker:${item.id}:end -->`,
-  ].join("\n");
-}
-
-export function upsertTaskDocumentationSection(
-  markdown: string,
-  item: TaskTrackerItem,
-): string {
-  const section = taskSection(item);
-  const start = `<!-- task-tracker:${item.id}:start -->`;
-  const end = `<!-- task-tracker:${item.id}:end -->`;
-  const startIndex = markdown.indexOf(start);
-  const endIndex = markdown.indexOf(end);
-  if (startIndex >= 0 && endIndex >= startIndex) {
-    return [
-      markdown.slice(0, startIndex).trimEnd(),
-      section,
-      markdown.slice(endIndex + end.length).trimStart(),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-  }
-  return [markdown.trimEnd(), section].filter(Boolean).join("\n\n");
 }
 
 async function updateActionState(
@@ -103,89 +73,6 @@ async function updateActionState(
     );
   }
   return data as TaskTrackerItem;
-}
-
-async function syncDocumentation(
-  item: TaskTrackerItem,
-): Promise<DocumentationNode> {
-  const supabase = getSupabase();
-  if (!supabase) {
-    throw new TaskTrackerPipelineError(
-      "Supabase is not configured.",
-      "not_configured",
-    );
-  }
-
-  let document: DocumentationNode | null = null;
-  if (item.documentation_node_id) {
-    const linked = await supabase
-      .from("documentation_nodes")
-      .select("*")
-      .eq("id", item.documentation_node_id)
-      .eq("project_id", item.project_id)
-      .maybeSingle();
-    if (linked.error) {
-      throw new TaskTrackerPipelineError(linked.error.message, "invalid");
-    }
-    document = linked.data as DocumentationNode | null;
-  }
-
-  if (!document) {
-    const shared = await supabase
-      .from("documentation_nodes")
-      .select("*")
-      .eq("project_id", item.project_id)
-      .eq("slug", "task-updates")
-      .maybeSingle();
-    if (shared.error) {
-      throw new TaskTrackerPipelineError(shared.error.message, "invalid");
-    }
-    document = shared.data as DocumentationNode | null;
-  }
-
-  if (!document) {
-    const created = await createDocumentationNode({
-      project_id: item.project_id,
-      parent_id: null,
-      slug: "task-updates",
-      title: "Task updates",
-      markdown: upsertTaskDocumentationSection(
-        "# Task updates\n\nClient-facing decisions and delivery commitments.",
-        item,
-      ),
-      sort_order: 0,
-      canvas_x: 80,
-      canvas_y: 100,
-    });
-    if (!created.ok || !created.data) {
-      throw new TaskTrackerPipelineError(
-        created.ok ? "Documentation was not created." : created.error,
-        !created.ok && created.code === "not_configured"
-          ? "not_configured"
-          : "invalid",
-      );
-    }
-    return created.data;
-  }
-
-  const updated = await updateDocumentationContent({
-    id: document.id,
-    expected_lock_version: document.lock_version,
-    slug: document.slug,
-    title: document.title,
-    markdown: upsertTaskDocumentationSection(document.markdown, item),
-  });
-  if (!updated.ok || !updated.data) {
-    throw new TaskTrackerPipelineError(
-      updated.ok ? "Documentation was not updated." : updated.error,
-      !updated.ok && updated.code === "conflict"
-        ? "conflict"
-        : !updated.ok && updated.code === "not_configured"
-          ? "not_configured"
-          : "invalid",
-    );
-  }
-  return updated.data;
 }
 
 async function syncRoadmap(item: TaskTrackerItem): Promise<RoadmapTask> {
@@ -318,6 +205,13 @@ export async function actionTaskTrackerItem(
         data: {
           item,
           documentation: documentation.data as DocumentationNode,
+          documentation_changes: [
+            {
+              operation: "updated",
+              node: documentation.data as DocumentationNode,
+            },
+          ],
+          agent_summary: `Documentation and roadmap already updated for ${item.title}.`,
           roadmap: roadmap.data as RoadmapTask,
         },
       };
@@ -325,6 +219,9 @@ export async function actionTaskTrackerItem(
   }
   if (item.status === "cancelled") {
     return { ok: false, code: "invalid", error: "Cancelled tasks cannot be actioned." };
+  }
+  if (item.status === "completed") {
+    return { ok: false, code: "invalid", error: "Completed tasks cannot be actioned." };
   }
   if (item.status === "actioning" || item.lock_version !== expectedLockVersion) {
     return {
@@ -346,7 +243,8 @@ export async function actionTaskTrackerItem(
 
     // The order is deliberate: product context is durable before work enters
     // the executable roadmap.
-    const documentation = await syncDocumentation(item);
+    const documentationResult = await runDocumentationAgent(item);
+    const documentation = documentationResult.primaryNode;
     item = await updateActionState(
       item,
       "actioning",
@@ -363,11 +261,29 @@ export async function actionTaskTrackerItem(
       roadmap.id,
       null,
     );
-    return { ok: true, data: { item, documentation, roadmap } };
+    return {
+      ok: true,
+      data: {
+        item,
+        documentation,
+        documentation_changes: documentationResult.changes,
+        agent_summary: documentationResult.summary,
+        roadmap,
+      },
+    };
   } catch (error) {
-    const pipelineError = error instanceof TaskTrackerPipelineError
-      ? error
-      : new TaskTrackerPipelineError("The task action failed.", "invalid");
+    const pipelineError =
+      error instanceof TaskTrackerPipelineError
+        ? error
+        : error instanceof DocumentationAgentError
+          ? new TaskTrackerPipelineError(
+              error.message,
+              error.code === "not_configured" ? "not_configured" : "invalid",
+            )
+          : new TaskTrackerPipelineError(
+              error instanceof Error ? error.message : "The task action failed.",
+              "invalid",
+            );
     try {
       item = await updateActionState(
         item,
