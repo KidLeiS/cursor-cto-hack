@@ -4,7 +4,7 @@ on:
   deployment_status:
 
 concurrency:
-  group: production-smoke
+  group: production-smoke-${{ github.event.deployment.environment }}
   cancel-in-progress: true
 
 jobs:
