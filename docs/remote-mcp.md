@@ -40,7 +40,8 @@ configuration file, add:
     "sushicode": {
       "url": "https://YOUR-VERCEL-DOMAIN/api/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_MCP_API_KEY"
+        "Authorization": "Bearer YOUR_MCP_API_KEY",
+        "MCP-Protocol-Version": "2025-11-25"
       }
     }
   }
@@ -77,7 +78,7 @@ curl -sS https://YOUR-VERCEL-DOMAIN/api/mcp \
   -H "Authorization: Bearer YOUR_MCP_API_KEY" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
 ```
 
 List tools:
@@ -85,6 +86,7 @@ List tools:
 ```bash
 curl -sS https://YOUR-VERCEL-DOMAIN/api/mcp \
   -H "Authorization: Bearer YOUR_MCP_API_KEY" \
+  -H "MCP-Protocol-Version: 2025-11-25" \
   -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```

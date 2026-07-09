@@ -331,6 +331,12 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
       z.object({ id: uuid, expected_lock_version: lockVersion }).strict(),
       args,
     );
+    const project = await loadDocumentationProject();
+    if (!project) throw new Error("Documentation is not configured.");
+    const belongsToProject = (await loadDocumentationNodes(project.id)).some(
+      (item) => item.id === input.id,
+    );
+    if (!belongsToProject) throw new Error("Document not found.");
     return assertAction(await deleteDocumentationNode(input));
   }
 
@@ -408,6 +414,10 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
       z.object({ id: uuid, expected_lock_version: lockVersion }).strict(),
       args,
     );
+    const bundle = await loadRoadmapBundle();
+    if (!bundle.tasks.some((item) => item.id === input.id)) {
+      throw new Error("Roadmap task not found.");
+    }
     return assertAction(
       await deleteRoadmapTask(input.id, input.expected_lock_version),
     );

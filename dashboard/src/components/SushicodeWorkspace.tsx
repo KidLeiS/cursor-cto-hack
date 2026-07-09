@@ -1917,6 +1917,7 @@ export function SushicodeWorkspace({
                         url: mcpUrl,
                         headers: {
                           Authorization: "Bearer YOUR_MCP_API_KEY",
+                          "MCP-Protocol-Version": "2025-11-25",
                         },
                       },
                     },
