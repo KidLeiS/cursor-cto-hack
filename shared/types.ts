@@ -140,6 +140,56 @@ export interface DebugCase {
   updated_at: string;
 }
 
+export type DocumentationCanvasMetadata = Record<string, unknown>;
+
+/** A Markdown document and its position in the project's flexible tree canvas. */
+export interface DocumentationNode {
+  id: string;
+  project_id: string;
+  parent_id: string | null;
+  slug: string;
+  title: string;
+  markdown: string;
+  sort_order: number;
+  canvas_x: number;
+  canvas_y: number;
+  canvas_width: number | null;
+  canvas_height: number | null;
+  canvas_metadata: DocumentationCanvasMetadata;
+  content_version: number;
+  lock_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Immutable content snapshot created before a document content update. */
+export interface DocumentationRevision {
+  id: string;
+  project_id: string;
+  node_id: string;
+  content_version: number;
+  slug: string;
+  title: string;
+  markdown: string;
+  created_at: string;
+}
+
+/** Metadata for an image whose bytes are held in Supabase Storage. */
+export interface DocumentationAsset {
+  id: string;
+  project_id: string;
+  node_id: string;
+  storage_bucket: string;
+  storage_path: string;
+  original_filename: string;
+  mime_type: "image/gif" | "image/jpeg" | "image/png" | "image/webp";
+  byte_size: number;
+  width: number | null;
+  height: number | null;
+  alt_text: string | null;
+  created_at: string;
+}
+
 /** Payload a Feature agent writes after planning. */
 export interface FeaturePlanOutput {
   feature: Pick<Feature, "slug" | "title" | "summary" | "backend_notes" | "module_ids">;
