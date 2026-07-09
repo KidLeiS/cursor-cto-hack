@@ -3,12 +3,15 @@ import {
   CloudflareTranscriptionError,
   transcribeWithCloudflare,
 } from "@/lib/cloudflare-transcription";
+import { requireApiUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   let formData: FormData;
   try {
     formData = await request.formData();

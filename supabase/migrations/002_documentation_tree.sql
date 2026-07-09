@@ -309,27 +309,16 @@ alter table public.documentation_revisions enable row level security;
 alter table public.documentation_assets enable row level security;
 alter table public.documentation_storage_cleanup_queue enable row level security;
 
--- Match the existing hack/demo access model. Replace these with membership policies
--- when authentication is introduced.
+-- Deny by default until the membership policies are installed.
 drop policy if exists "documentation_nodes_all" on public.documentation_nodes;
 drop policy if exists "documentation_nodes_read" on public.documentation_nodes;
-create policy "documentation_nodes_read" on public.documentation_nodes
-  for select using (true);
 drop policy if exists "documentation_nodes_insert" on public.documentation_nodes;
-create policy "documentation_nodes_insert" on public.documentation_nodes
-  for insert with check (true);
 
 drop policy if exists "documentation_revisions_read" on public.documentation_revisions;
-create policy "documentation_revisions_read" on public.documentation_revisions
-  for select using (true);
 
 drop policy if exists "documentation_assets_all" on public.documentation_assets;
 drop policy if exists "documentation_assets_read" on public.documentation_assets;
-create policy "documentation_assets_read" on public.documentation_assets
-  for select using (true);
 drop policy if exists "documentation_assets_insert" on public.documentation_assets;
-create policy "documentation_assets_insert" on public.documentation_assets
-  for insert with check (true);
 
 -- The cleanup queue is deliberately inaccessible to anonymous clients. A
 -- service-role worker can read it (service_role bypasses RLS) and remove objects.
@@ -344,15 +333,15 @@ revoke all on function public.delete_documentation_node(uuid, integer) from publ
 revoke all on function public.archive_documentation_asset(uuid) from public;
 
 grant execute on function public.update_documentation_content(uuid, integer, text, text, text)
-  to anon, authenticated;
+  to service_role;
 grant execute on function public.move_documentation_node(
   uuid, integer, uuid, integer, double precision, double precision,
   double precision, double precision, jsonb
-) to anon, authenticated;
+) to service_role;
 grant execute on function public.delete_documentation_node(uuid, integer)
-  to anon, authenticated;
+  to service_role;
 grant execute on function public.archive_documentation_asset(uuid)
-  to anon, authenticated;
+  to service_role;
 
 -- Supabase Storage is the binary layer. The bucket is private; callers receive
 -- short-lived signed URLs rather than permanent public links.
@@ -370,13 +359,7 @@ on conflict (id) do update set
   allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "documentation_assets_storage_read" on storage.objects;
-create policy "documentation_assets_storage_read" on storage.objects
-  for select using (bucket_id = 'documentation-assets');
 
 drop policy if exists "documentation_assets_storage_insert" on storage.objects;
-create policy "documentation_assets_storage_insert" on storage.objects
-  for insert with check (bucket_id = 'documentation-assets');
 
 drop policy if exists "documentation_assets_storage_delete" on storage.objects;
-create policy "documentation_assets_storage_delete" on storage.objects
-  for delete using (bucket_id = 'documentation-assets');

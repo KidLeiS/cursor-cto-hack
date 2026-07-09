@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import type { RoadmapTask } from "@shared/types";
 import { getSupabase } from "./data";
+import {
+  authorizeMutation,
+  SERVICE_AUTHORIZATION,
+} from "./service-authorization";
 import type {
   CreateRoadmapTaskInput,
   UpdateRoadmapTaskInput,
@@ -23,7 +27,9 @@ function refreshRoadmap(): void {
 
 export async function createRoadmapTask(
   input: CreateRoadmapTaskInput,
+  authorization?: typeof SERVICE_AUTHORIZATION,
 ): Promise<RoadmapActionResult<RoadmapTask>> {
+  await authorizeMutation(authorization);
   const supabase = getSupabase();
   if (!supabase) {
     return {
@@ -71,7 +77,9 @@ export async function createRoadmapTask(
 export async function updateRoadmapTask(
   taskId: string,
   input: UpdateRoadmapTaskInput,
+  authorization?: typeof SERVICE_AUTHORIZATION,
 ): Promise<RoadmapActionResult<RoadmapTask>> {
+  await authorizeMutation(authorization);
   const supabase = getSupabase();
   if (!supabase) {
     return {
@@ -115,7 +123,9 @@ export async function updateRoadmapTask(
 export async function deleteRoadmapTask(
   taskId: string,
   expectedLockVersion: number,
+  authorization?: typeof SERVICE_AUTHORIZATION,
 ): Promise<RoadmapActionResult<boolean>> {
+  await authorizeMutation(authorization);
   const supabase = getSupabase();
   if (!supabase) {
     return {

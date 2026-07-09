@@ -31,10 +31,14 @@ export function getSupabase(): SupabaseClient | null {
   const url =
     process.env.SB_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
-    process.env.SB_PK || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.SB_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return null;
   return createClient(
     url!,
     key!,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
   );
 }
 

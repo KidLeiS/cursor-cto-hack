@@ -6,6 +6,7 @@ import {
   openApiHeaders,
 } from "@/lib/documentation-api";
 import { getSupabase } from "@/lib/data";
+import { requireApiUser } from "@/lib/auth";
 import { loadDocumentationProject } from "@/lib/documentation-project";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,8 @@ export const OPTIONS = apiOptions;
 type Context = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, context: Context) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   if (!documentationIdSchema.safeParse(id).success) {
     return apiJson({ ok: false, error: "Asset ID must be a UUID." }, 422);

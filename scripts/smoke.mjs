@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Production smoke: dashboard HTML, read APIs, and Supabase REST.
+ * Production smoke: auth gate, public health, and anonymous RLS denial.
  * Env: SB_URL, SB_PK, DASHBOARD_URL (Vercel deployment URL)
  */
 
@@ -42,7 +42,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("Smoke Supabase REST: projects");
+  console.log("Smoke Supabase anonymous RLS");
   await retry("Supabase migration", async () => {
     const rest = await fetch(
       `${sbUrl}/rest/v1/projects?slug=eq.cursor-cto-hack&select=slug,name`,
@@ -56,13 +56,13 @@ async function main() {
     );
     await mustOk(rest, "supabase projects");
     const rows = await rest.json();
-    if (!Array.isArray(rows) || rows.length < 1 || rows[0].slug !== "cursor-cto-hack") {
+    if (!Array.isArray(rows) || rows.length !== 0) {
       throw new Error(`Unexpected projects payload: ${JSON.stringify(rows).slice(0, 200)}`);
     }
   });
-  console.log("Supabase REST OK");
+  console.log("Anonymous Supabase access denied by RLS");
 
-  console.log(`Smoke dashboard: ${dashboardUrl}`);
+  console.log(`Smoke authentication gate: ${dashboardUrl}`);
   await retry("Vercel dashboard", async () => {
     const page = await fetch(dashboardUrl, {
       headers: { "user-agent": "cursor-cto-smoke/1.0" },
@@ -70,82 +70,37 @@ async function main() {
     });
     await mustOk(page, "dashboard");
     const html = await page.text();
-    if (!html.includes("sushicode is code")) {
-      throw new Error("Landing page HTML missing expected text");
+    if (!html.includes("Sushicode private beta")) {
+      throw new Error("Login page HTML missing expected text");
     }
   });
-  console.log("Dashboard HTML OK");
+  console.log("Authentication gate OK");
 
-  console.log("Smoke documentation API + seeded canvas");
-  await retry("Documentation workspace", async () => {
-    const health = await fetch(`${dashboardUrl}/api/docs/health`, {
+  console.log("Smoke public health");
+  await retry("Service health", async () => {
+    const health = await fetch(`${dashboardUrl}/api/health`, {
       headers: { "user-agent": "cursor-cto-smoke/1.0" },
       redirect: "follow",
     });
-    await mustOk(health, "documentation health");
+    await mustOk(health, "service health");
     const payload = await health.json();
-    if (!payload.ok || payload.status !== "ready" || payload.node_count < 10) {
-      throw new Error(`Unexpected documentation health: ${JSON.stringify(payload).slice(0, 200)}`);
+    if (!payload.ok || payload.status !== "ready" || payload.authentication !== "required") {
+      throw new Error(`Unexpected service health: ${JSON.stringify(payload).slice(0, 200)}`);
     }
+  });
+  console.log("Service health OK");
 
-    const page = await fetch(`${dashboardUrl}/docs`, {
+  console.log("Smoke protected APIs");
+  await retry("Protected API", async () => {
+    const response = await fetch(`${dashboardUrl}/api/tasks`, {
       headers: { "user-agent": "cursor-cto-smoke/1.0" },
-      redirect: "follow",
+      redirect: "manual",
     });
-    await mustOk(page, "documentation page");
-    const html = await page.text();
-    if (!html.includes("Platform map") || !html.includes("Infrastructure")) {
-      throw new Error("Documentation page is missing seeded canvas data");
+    if (response.status !== 401) {
+      throw new Error(`Protected roadmap API returned ${response.status}, expected 401`);
     }
   });
-  console.log("Documentation workspace OK");
-
-  console.log("Smoke roadmap + task tracker APIs");
-  await retry("Core read APIs", async () => {
-    const [roadmapResponse, trackerResponse] = await Promise.all([
-      fetch(`${dashboardUrl}/api/tasks`, {
-        headers: { "user-agent": "cursor-cto-smoke/1.0" },
-      }),
-      fetch(`${dashboardUrl}/api/task-tracker`, {
-        headers: { "user-agent": "cursor-cto-smoke/1.0" },
-      }),
-    ]);
-    await mustOk(roadmapResponse, "roadmap API");
-    await mustOk(trackerResponse, "task tracker API");
-
-    const roadmap = await roadmapResponse.json();
-    if (roadmap.source !== "supabase" || !Array.isArray(roadmap.data)) {
-      throw new Error(`Unexpected roadmap payload: ${JSON.stringify(roadmap).slice(0, 200)}`);
-    }
-
-    const tracker = await trackerResponse.json();
-    if (!tracker.ok || tracker.source !== "supabase" || !Array.isArray(tracker.data)) {
-      throw new Error(`Unexpected task tracker payload: ${JSON.stringify(tracker).slice(0, 200)}`);
-    }
-  });
-  console.log("Roadmap + task tracker APIs OK");
-
-  console.log("Smoke DeepSeek server configuration");
-  await retry("DeepSeek configuration", async () => {
-    const response = await fetch(`${dashboardUrl}/api/task-tracker`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "user-agent": "cursor-cto-smoke/1.0",
-      },
-      body: JSON.stringify({
-        input: "Validate server configuration without creating a task",
-        time_zone: "Smoke/Invalid",
-      }),
-    });
-    const payload = await response.json();
-    if (response.status !== 422 || payload.code !== "invalid_output") {
-      throw new Error(
-        `Unexpected DeepSeek configuration response (${response.status}): ${JSON.stringify(payload).slice(0, 200)}`,
-      );
-    }
-  });
-  console.log("DeepSeek server configuration OK");
+  console.log("Protected APIs reject anonymous callers");
   console.log("Smoke passed");
 }
 

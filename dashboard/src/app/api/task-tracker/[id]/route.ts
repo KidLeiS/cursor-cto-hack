@@ -8,6 +8,7 @@ import {
   deleteTaskTrackerItemSchema,
   updateTaskTrackerItemSchema,
 } from "@/lib/task-tracker-validation";
+import { requireApiUser } from "@/lib/auth";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -26,6 +27,8 @@ function errorStatus(code: string): number {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const id = await itemId(context);
   if (!id) {
     return NextResponse.json(
@@ -58,6 +61,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const id = await itemId(context);
   if (!id) {
     return NextResponse.json(

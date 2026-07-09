@@ -54,8 +54,9 @@ through Supabase's default row limit.
 
 ## Access control
 
-The migration intentionally matches the repository's existing hack/demo RLS
-model, where the anonymous key can mutate project data. Before adding user
-accounts, replace the open node/asset and Storage policies with project
-membership checks. Revision rows are read-only to clients and are written only
-by the versioning trigger.
+Migration `008_auth_waitlist_security.sql` replaces the original demo policies
+with project-membership RLS, revokes anonymous RPC execution, and restricts
+Storage objects to the authenticated project. Revision rows remain read-only to
+clients and are written only by the versioning trigger. Application mutations
+run through the server-only service role after session or per-user MCP-key
+authorization.

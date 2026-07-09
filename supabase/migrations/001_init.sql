@@ -204,7 +204,8 @@ create trigger debug_cases_updated_at before update on public.debug_cases
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
--- RLS: open for anon key in hack/demo; tighten with auth later
+-- RLS is deny-by-default. Membership policies are installed by the auth
+-- security migration after the identity tables exist.
 -- ---------------------------------------------------------------------------
 
 alter table public.projects enable row level security;
@@ -217,28 +218,20 @@ alter table public.workplan_steps enable row level security;
 alter table public.debug_cases enable row level security;
 
 drop policy if exists "projects_all" on public.projects;
-create policy "projects_all" on public.projects for all using (true) with check (true);
 
 drop policy if exists "modules_all" on public.modules;
-create policy "modules_all" on public.modules for all using (true) with check (true);
 
 drop policy if exists "features_all" on public.features;
-create policy "features_all" on public.features for all using (true) with check (true);
 
 drop policy if exists "gates_all" on public.gates;
-create policy "gates_all" on public.gates for all using (true) with check (true);
 
 drop policy if exists "agent_runs_all" on public.agent_runs;
-create policy "agent_runs_all" on public.agent_runs for all using (true) with check (true);
 
 drop policy if exists "workplans_all" on public.workplans;
-create policy "workplans_all" on public.workplans for all using (true) with check (true);
 
 drop policy if exists "workplan_steps_all" on public.workplan_steps;
-create policy "workplan_steps_all" on public.workplan_steps for all using (true) with check (true);
 
 drop policy if exists "debug_cases_all" on public.debug_cases;
-create policy "debug_cases_all" on public.debug_cases for all using (true) with check (true);
 
 -- Seed demo project
 insert into public.projects (slug, name, repo_url)

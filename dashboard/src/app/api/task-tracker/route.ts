@@ -8,8 +8,11 @@ import {
   loadTaskTrackerBundle,
 } from "@/lib/task-tracker";
 import { createTaskTrackerItemsSchema } from "@/lib/task-tracker-validation";
+import { requireApiUser } from "@/lib/auth";
 
 export async function GET() {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   try {
     const bundle = await loadTaskTrackerBundle();
     return NextResponse.json({
@@ -26,6 +29,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   let body: unknown;
   try {
     body = await request.json();

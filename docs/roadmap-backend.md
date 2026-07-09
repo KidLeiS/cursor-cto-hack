@@ -34,9 +34,9 @@ Migration `003_roadmap_tasks.sql` creates three RPCs:
 - `delete_roadmap_task(task_id, expected_lock_version)` deletes only when the
   version matches; descendants cascade.
 
-Anonymous clients can read tables but all mutations go through these RPCs.
-Authentication and project-membership RLS remain future production work,
-consistent with the current hackathon backend.
+Anonymous clients cannot read roadmap tables or execute mutation RPCs.
+Authenticated dashboard access is limited by project-membership RLS; server
+mutations additionally require the approved session or a valid per-user MCP key.
 
 ## HTTP endpoints
 

@@ -16,6 +16,7 @@ import {
   createRoadmapTaskSchema,
   updateRoadmapTaskSchema,
 } from "./roadmap-validation";
+import { SERVICE_AUTHORIZATION } from "./service-authorization";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -268,8 +269,18 @@ function assertAction<T>(
   return result.data ?? true;
 }
 
-export async function callMcpTool(name: string, rawArguments: unknown): Promise<unknown> {
+export async function callMcpTool(
+  name: string,
+  rawArguments: unknown,
+  authorizedProjectId: string,
+): Promise<unknown> {
   const args = rawArguments ?? {};
+
+  function assertProject(projectId: string): void {
+    if (projectId !== authorizedProjectId) {
+      throw new Error("MCP key is not authorized for this project.");
+    }
+  }
 
   if (name === "documentation_list") {
     const input = parse(
@@ -278,6 +289,7 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
     );
     const project = await loadDocumentationProject();
     if (!project) throw new Error("Documentation is not configured.");
+    assertProject(project.id);
     const nodes = await loadDocumentationNodes(project.id);
     return {
       project,
@@ -291,6 +303,7 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
     const input = parse(z.object({ id: uuid }).strict(), args);
     const project = await loadDocumentationProject();
     if (!project) throw new Error("Documentation is not configured.");
+    assertProject(project.id);
     const node = (await loadDocumentationNodes(project.id)).find(
       (item) => item.id === input.id,
     );
@@ -302,8 +315,12 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
     const input = parse(documentCreateSchema, args);
     const project = await loadDocumentationProject();
     if (!project) throw new Error("Documentation is not configured.");
+    assertProject(project.id);
     return assertAction(
-      await createDocumentationNode({ project_id: project.id, ...input }),
+      await createDocumentationNode(
+        { project_id: project.id, ...input },
+        SERVICE_AUTHORIZATION,
+      ),
     );
   }
 
@@ -311,18 +328,22 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
     const input = parse(documentUpdateSchema, args);
     const project = await loadDocumentationProject();
     if (!project) throw new Error("Documentation is not configured.");
+    assertProject(project.id);
     const current = (await loadDocumentationNodes(project.id)).find(
       (item) => item.id === input.id,
     );
     if (!current) throw new Error("Document not found.");
     return assertAction(
-      await updateDocumentationContent({
-        id: current.id,
-        expected_lock_version: input.expected_lock_version,
-        title: input.title ?? current.title,
-        slug: input.slug ?? current.slug,
-        markdown: input.markdown ?? current.markdown,
-      }),
+      await updateDocumentationContent(
+        {
+          id: current.id,
+          expected_lock_version: input.expected_lock_version,
+          title: input.title ?? current.title,
+          slug: input.slug ?? current.slug,
+          markdown: input.markdown ?? current.markdown,
+        },
+        SERVICE_AUTHORIZATION,
+      ),
     );
   }
 
@@ -333,16 +354,20 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
     );
     const project = await loadDocumentationProject();
     if (!project) throw new Error("Documentation is not configured.");
+    assertProject(project.id);
     const belongsToProject = (await loadDocumentationNodes(project.id)).some(
       (item) => item.id === input.id,
     );
     if (!belongsToProject) throw new Error("Document not found.");
-    return assertAction(await deleteDocumentationNode(input));
+    return assertAction(
+      await deleteDocumentationNode(input, SERVICE_AUTHORIZATION),
+    );
   }
 
   if (name === "roadmap_list") {
     parse(z.object({}).strict(), args);
     const bundle = await loadRoadmapBundle();
+    assertProject(bundle.project.id);
     return {
       project: bundle.project,
       tasks: bundle.tasks,
@@ -354,6 +379,7 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
   if (name === "roadmap_get") {
     const input = parse(z.object({ id: uuid }).strict(), args);
     const bundle = await loadRoadmapBundle();
+    assertProject(bundle.project.id);
     const task = bundle.tasks.find((item) => item.id === input.id);
     if (!task) throw new Error("Roadmap task not found.");
     return {
@@ -366,6 +392,8 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
 
   if (name === "roadmap_create") {
     const input = parse(createRoadmapSchema, args);
+    const bundle = await loadRoadmapBundle();
+    assertProject(bundle.project.id);
     const title = input.title.trim();
     const complete = parse(createRoadmapTaskSchema, {
       parent_task_id: null,
@@ -380,12 +408,15 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
       dependency_ids: [],
       ...input,
     });
-    return assertAction(await createRoadmapTask(complete));
+    return assertAction(
+      await createRoadmapTask(complete, SERVICE_AUTHORIZATION),
+    );
   }
 
   if (name === "roadmap_update") {
     const input = parse(updateRoadmapPatchSchema, args);
     const bundle = await loadRoadmapBundle();
+    assertProject(bundle.project.id);
     const current = bundle.tasks.find((item) => item.id === input.id);
     if (!current) throw new Error("Roadmap task not found.");
     const dependencyIds = bundle.dependencies
@@ -406,7 +437,9 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
       dependency_ids: dependencyIds,
       ...input,
     });
-    return assertAction(await updateRoadmapTask(current.id, complete));
+    return assertAction(
+      await updateRoadmapTask(current.id, complete, SERVICE_AUTHORIZATION),
+    );
   }
 
   if (name === "roadmap_delete") {
@@ -415,11 +448,16 @@ export async function callMcpTool(name: string, rawArguments: unknown): Promise<
       args,
     );
     const bundle = await loadRoadmapBundle();
+    assertProject(bundle.project.id);
     if (!bundle.tasks.some((item) => item.id === input.id)) {
       throw new Error("Roadmap task not found.");
     }
     return assertAction(
-      await deleteRoadmapTask(input.id, input.expected_lock_version),
+      await deleteRoadmapTask(
+        input.id,
+        input.expected_lock_version,
+        SERVICE_AUTHORIZATION,
+      ),
     );
   }
 

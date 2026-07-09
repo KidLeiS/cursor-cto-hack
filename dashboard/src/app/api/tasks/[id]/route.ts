@@ -13,6 +13,7 @@ import {
   deleteRoadmapTaskSchema,
   updateRoadmapTaskSchema,
 } from "@/lib/roadmap-validation";
+import { requireApiUser } from "@/lib/auth";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -24,6 +25,8 @@ async function taskIdFrom(context: RouteContext): Promise<string | null> {
 }
 
 export async function GET(_request: Request, context: RouteContext) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const taskId = await taskIdFrom(context);
   if (!taskId) {
     return NextResponse.json({ error: "Invalid task id" }, { status: 400 });
@@ -51,6 +54,8 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const taskId = await taskIdFrom(context);
   if (!taskId) {
     return NextResponse.json({ error: "Invalid task id" }, { status: 400 });
@@ -87,6 +92,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const taskId = await taskIdFrom(context);
   if (!taskId) {
     return NextResponse.json({ error: "Invalid task id" }, { status: 400 });

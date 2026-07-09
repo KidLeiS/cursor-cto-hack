@@ -18,6 +18,7 @@ import {
   loadDocumentationRevisions,
 } from "@/lib/documentation";
 import { loadDocumentationProject } from "@/lib/documentation-project";
+import { requireApiUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const OPTIONS = apiOptions;
@@ -25,6 +26,8 @@ export const OPTIONS = apiOptions;
 type Context = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, context: Context) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   if (!documentationIdSchema.safeParse(id).success) {
     return apiJson({ ok: false, error: "Document ID must be a UUID." }, 422);
@@ -44,6 +47,8 @@ export async function GET(_request: Request, context: Context) {
 }
 
 export async function PATCH(request: Request, context: Context) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   if (!documentationIdSchema.safeParse(id).success) {
     return apiJson({ ok: false, error: "Document ID must be a UUID." }, 422);
@@ -92,6 +97,8 @@ export async function PATCH(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   if (!documentationIdSchema.safeParse(id).success) {
     return apiJson({ ok: false, error: "Document ID must be a UUID." }, 422);

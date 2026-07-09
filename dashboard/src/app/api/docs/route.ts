@@ -10,11 +10,14 @@ import {
 } from "@/lib/documentation-api";
 import { loadDocumentationNodes } from "@/lib/documentation";
 import { loadDocumentationProject } from "@/lib/documentation-project";
+import { requireApiUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const OPTIONS = apiOptions;
 
 export async function GET() {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const project = await loadDocumentationProject();
   if (!project) return apiJson({ ok: false, error: "Documentation is not configured." }, 503);
 
@@ -32,6 +35,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const parsed = await readJson(request, createNodeSchema);
   if ("response" in parsed) return parsed.response;
 

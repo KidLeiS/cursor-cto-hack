@@ -1,6 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { callMcpTool, mcpTools } from "@/lib/mcp-tools";
+import {
+  authenticateMcpKey,
+  isMcpRateLimited,
+  recordMcpToolCall,
+} from "@/lib/mcp-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -19,7 +23,6 @@ const protocolVersions = [
   "2024-11-05",
 ];
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, content-type, mcp-protocol-version, mcp-session-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -45,45 +48,17 @@ function jsonRpcError(
   );
 }
 
-function secureEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return (
-    leftBuffer.length === rightBuffer.length &&
-    timingSafeEqual(leftBuffer, rightBuffer)
-  );
-}
-
-function authorize(request: Request): NextResponse | null {
-  const configuredKey = process.env.MCP_API_KEY;
-  if (!configuredKey) {
+export async function POST(request: Request) {
+  const auth = await authenticateMcpKey(request.headers.get("authorization"));
+  if (!auth) {
     return NextResponse.json(
-      {
-        error:
-          "MCP_API_KEY is not configured. Add it to the Vercel project and redeploy.",
-      },
-      { status: 503, headers: corsHeaders },
-    );
-  }
-  const authorization = request.headers.get("authorization");
-  const suppliedKey = authorization?.startsWith("Bearer ")
-    ? authorization.slice(7)
-    : "";
-  if (!suppliedKey || !secureEqual(suppliedKey, configuredKey)) {
-    return NextResponse.json(
-      { error: "Provide the MCP API key as a Bearer token." },
+      { error: "Provide an active per-user MCP key as a Bearer token." },
       {
         status: 401,
         headers: { ...corsHeaders, "WWW-Authenticate": "Bearer" },
       },
     );
   }
-  return null;
-}
-
-export async function POST(request: Request) {
-  const unauthorized = authorize(request);
-  if (unauthorized) return unauthorized;
 
   let message: JsonRpcRequest;
   try {
@@ -123,14 +98,30 @@ export async function POST(request: Request) {
     if (typeof name !== "string") {
       return jsonRpcError(message.id, -32602, "Tool name is required.");
     }
+    if (await isMcpRateLimited(auth)) {
+      return NextResponse.json(
+        { error: "MCP key rate limit exceeded." },
+        { status: 429, headers: { ...corsHeaders, "Retry-After": "60" } },
+      );
+    }
+    const readOnly = name.endsWith("_list") || name.endsWith("_get");
+    if (!auth.scopes.includes(readOnly ? "mcp:read" : "mcp:write")) {
+      return jsonRpcError(message.id, -32603, "MCP key does not allow this operation.");
+    }
     try {
-      const value = await callMcpTool(name, message.params?.arguments);
+      const value = await callMcpTool(
+        name,
+        message.params?.arguments,
+        auth.projectId,
+      );
+      await recordMcpToolCall(auth, name, true);
       return jsonRpc(message.id, {
         content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
         structuredContent: value,
         isError: false,
       });
     } catch (error) {
+      await recordMcpToolCall(auth, name, false);
       const text = error instanceof Error ? error.message : "Tool call failed.";
       return jsonRpc(message.id, {
         content: [{ type: "text", text }],
@@ -148,7 +139,7 @@ export function GET() {
       name: "Sushicode Remote MCP",
       transport: "Streamable HTTP",
       endpoint: "/api/mcp",
-      authentication: "Authorization: Bearer <MCP_API_KEY>",
+      authentication: "Authorization: Bearer <per-user MCP key>",
       capabilities: ["documentation read/write", "roadmap read/write"],
     },
     { status: 405, headers: { ...corsHeaders, Allow: "POST, OPTIONS" } },

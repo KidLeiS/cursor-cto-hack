@@ -138,16 +138,12 @@ $$;
 alter table public.task_tracker_items enable row level security;
 
 drop policy if exists "task_tracker_items_read" on public.task_tracker_items;
-create policy "task_tracker_items_read" on public.task_tracker_items
-  for select using (true);
 
 drop policy if exists "task_tracker_items_insert" on public.task_tracker_items;
-create policy "task_tracker_items_insert" on public.task_tracker_items
-  for insert with check (true);
 
 revoke all on function public.update_task_tracker_action(
   uuid, integer, public.task_tracker_status, uuid, uuid, text
 ) from public;
 grant execute on function public.update_task_tracker_action(
   uuid, integer, public.task_tracker_status, uuid, uuid, text
-) to anon, authenticated;
+) to service_role;

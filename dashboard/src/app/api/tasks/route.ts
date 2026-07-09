@@ -6,8 +6,11 @@ import {
   loadRoadmapBundle,
 } from "@/lib/roadmap";
 import { createRoadmapTaskSchema } from "@/lib/roadmap-validation";
+import { requireApiUser } from "@/lib/auth";
 
 export async function GET() {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const bundle = await loadRoadmapBundle();
   const tree = buildRoadmapTree(bundle.tasks);
   const data = tree.roots.map((task) => ({
@@ -20,6 +23,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   let body: unknown;
   try {
     body = await request.json();

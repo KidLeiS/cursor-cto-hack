@@ -10,24 +10,17 @@ It gives connected agents read/write access to project documentation and roadmap
 tasks. The server runs as a normal Next.js route handler, so it can be deployed
 with the dashboard on Vercel; no separate process or always-on server is needed.
 
-## Vercel setup
+## Create a personal key
 
-1. Generate a strong random secret, for example:
+1. Sign in to Sushicode as the approved project user.
+2. Select **Connect MCP**.
+3. Name and create a key.
+4. Copy the value immediately. Only its SHA-256 hash is stored and the plaintext
+   cannot be shown again.
 
-   ```bash
-   openssl rand -hex 32
-   ```
-
-2. Open the Vercel project, then **Settings → Environment Variables**.
-3. Add `MCP_API_KEY` with the generated value. Enable it for Production and any
-   Preview environments that should expose MCP.
-4. Confirm the existing Supabase variables are available in the same environment.
-5. Redeploy the application. Environment variable changes do not affect an
-   already-built deployment.
-
-The endpoint deliberately returns `503` when `MCP_API_KEY` is missing and `401`
-when the Bearer token is incorrect. Never expose this key through a
-`NEXT_PUBLIC_` variable.
+Keys belong to a user and project, are limited to 60 tool calls per minute, and
+can be revoked immediately from the same dialog. The old shared Vercel
+`MCP_API_KEY` is not accepted.
 
 ## Cursor setup
 
@@ -40,7 +33,7 @@ configuration file, add:
     "sushicode": {
       "url": "https://YOUR-VERCEL-DOMAIN/api/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_MCP_API_KEY",
+        "Authorization": "Bearer YOUR_PERSONAL_MCP_KEY",
         "MCP-Protocol-Version": "2025-11-25"
       }
     }
@@ -75,7 +68,7 @@ Initialize:
 
 ```bash
 curl -sS https://YOUR-VERCEL-DOMAIN/api/mcp \
-  -H "Authorization: Bearer YOUR_MCP_API_KEY" \
+  -H "Authorization: Bearer YOUR_PERSONAL_MCP_KEY" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
@@ -85,7 +78,7 @@ List tools:
 
 ```bash
 curl -sS https://YOUR-VERCEL-DOMAIN/api/mcp \
-  -H "Authorization: Bearer YOUR_MCP_API_KEY" \
+  -H "Authorization: Bearer YOUR_PERSONAL_MCP_KEY" \
   -H "MCP-Protocol-Version: 2025-11-25" \
   -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
@@ -97,9 +90,11 @@ All edit/delete tools require the `lock_version` returned by a preceding read.
 If another user or agent writes first, the stale write fails; the agent should
 read again and retry deliberately.
 
-This is a project-level shared secret suitable for the hackathon. Before using
-the service for multiple customers, replace it with per-user OAuth or scoped API
-tokens and tighten the current anonymous Supabase policies.
+Key metadata, use timestamps, and tool audit events are stored without recording
+the plaintext key. Database RLS denies anonymous access and limits authenticated
+access to approved project membership. MCP tools execute through a server-only
+service client after the key, owner, project, scope, expiry, revocation, and rate
+limit checks pass.
 
 ## Demo polling
 
