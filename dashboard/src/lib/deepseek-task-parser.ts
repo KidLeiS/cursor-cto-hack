@@ -70,6 +70,13 @@ export class DeepSeekTaskParserError extends Error {
   }
 }
 
+export function resolveDeepSeekApiKey(
+  explicitKey: string | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  return explicitKey ?? env.DS_API ?? env.ds_api;
+}
+
 function dateInTimeZone(timeZone: string, now: Date): string {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
@@ -114,10 +121,10 @@ export async function parseTasksWithDeepSeek(
     url?: string;
   } = {},
 ): Promise<TaskTrackerLlmOutput> {
-  const apiKey = options.apiKey ?? process.env.ds_api;
+  const apiKey = resolveDeepSeekApiKey(options.apiKey);
   if (!apiKey) {
     throw new DeepSeekTaskParserError(
-      "DeepSeek is not configured. Set ds_api in Vercel.",
+      "DeepSeek is not configured. Set DS_API in Vercel.",
       "not_configured",
     );
   }

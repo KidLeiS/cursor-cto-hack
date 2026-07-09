@@ -37,11 +37,12 @@ Set these Vercel project environment variables for Production and Preview:
 | `SB_URL` | same project URL |
 | `SB_PK` | same anon public key |
 | `NEXT_PUBLIC_PROJECT_SLUG` | `cursor-cto-hack` |
-| `ds_api` | server-side DeepSeek key used by the task tracker |
+| `DS_API` | server-side DeepSeek key used by the task tracker |
 | `DEEPSEEK_MODEL` | optional; defaults to `deepseek-chat` |
 
 `SB_PW` is not needed by the dashboard and should stay only in GitHub Actions.
-DeepSeek variables must not use the `NEXT_PUBLIC_` prefix.
+DeepSeek variables must not use the `NEXT_PUBLIC_` prefix. The legacy lowercase
+`ds_api` name remains supported for existing deployments.
 
 ---
 
@@ -62,7 +63,7 @@ Workflows: [CI](.github/workflows/ci.yml) and [production smoke](.github/workflo
 2. Import `KidLeiS/cursor-cto-hack`
 3. Set **Root Directory** to `dashboard`
 4. Framework preset: **Next.js**
-5. Add the three Vercel variables above for Production + Preview
+5. Add the Vercel variables above for Production + Preview
 6. Deploy
 
 Vercel then deploys every push itself and reports the deployment URL back to GitHub. No `VERCEL_TOKEN`, org ID, project ID, or deployment CLI is required.
