@@ -39,9 +39,12 @@ Set these Vercel project environment variables for Production and Preview:
 | `NEXT_PUBLIC_PROJECT_SLUG` | `cursor-cto-hack` |
 | `ds_api` | server-side DeepSeek key used by the task tracker |
 | `DEEPSEEK_MODEL` | optional; defaults to `deepseek-chat` |
+| `MCP_API_KEY` | strong shared secret for remote agent read/write access |
 
 `SB_PW` is not needed by the dashboard and should stay only in GitHub Actions.
 DeepSeek variables must not use the `NEXT_PUBLIC_` prefix.
+`MCP_API_KEY` must also remain server-side. See the
+[remote MCP setup guide](docs/remote-mcp.md) for Vercel and Cursor configuration.
 
 ---
 
