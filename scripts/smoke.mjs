@@ -124,6 +124,28 @@ async function main() {
     }
   });
   console.log("Roadmap + task tracker APIs OK");
+
+  console.log("Smoke DeepSeek server configuration");
+  await retry("DeepSeek configuration", async () => {
+    const response = await fetch(`${dashboardUrl}/api/task-tracker`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "cursor-cto-smoke/1.0",
+      },
+      body: JSON.stringify({
+        input: "Validate server configuration without creating a task",
+        time_zone: "Smoke/Invalid",
+      }),
+    });
+    const payload = await response.json();
+    if (response.status !== 422 || payload.code !== "invalid_output") {
+      throw new Error(
+        `Unexpected DeepSeek configuration response (${response.status}): ${JSON.stringify(payload).slice(0, 200)}`,
+      );
+    }
+  });
+  console.log("DeepSeek server configuration OK");
   console.log("Smoke passed");
 }
 
