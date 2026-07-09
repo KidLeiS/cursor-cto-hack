@@ -16,20 +16,26 @@ import {
   moveDocumentationNode,
   uploadDocumentationImage,
 } from "@/lib/documentation-actions";
-import { updateWorkplanStep } from "@/lib/actions";
 import type { DashboardBundle } from "@/lib/data";
+import {
+  buildRoadmapTree,
+  estimatedRemainingMinutes,
+  formatMinutes,
+  type RoadmapBundle,
+  type RoadmapTaskNode,
+} from "@/lib/roadmap";
 import { formatTaskTrackerDate } from "@/lib/task-tracker-calendar";
 import type {
   DocumentationNode,
-  Feature,
+  RoadmapTask,
   TaskTrackerItem,
   TaskTrackerPriority,
-  WorkplanStep,
 } from "../../../shared/types";
 
 type WorkspaceProps = {
   bundle: DashboardBundle;
   documentationNodes: DocumentationNode[];
+  roadmapBundle: RoadmapBundle;
   taskTrackerItems: TaskTrackerItem[];
 };
 
@@ -58,6 +64,10 @@ type TrackerApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; data?: TaskTrackerItem };
 
+type RoadmapApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; status: number };
+
 async function trackerRequest<T>(
   url: string,
   init: RequestInit,
@@ -78,6 +88,29 @@ async function trackerRequest<T>(
     return body;
   } catch {
     return { ok: false, error: "The task tracker could not be reached." };
+  }
+}
+
+async function roadmapRequest<T>(
+  url: string,
+  init: RequestInit,
+): Promise<RoadmapApiResult<T>> {
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init.headers },
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: body.error || `Roadmap request failed (${response.status}).`,
+        status: response.status,
+      };
+    }
+    return { ok: true, data: body.data as T };
+  } catch {
+    return { ok: false, error: "The roadmap could not be reached.", status: 0 };
   }
 }
 
@@ -335,6 +368,18 @@ function buildTimeline(items: TaskTrackerItem[]): TimelineItem[] {
     .map(trackerTimelineItem);
 }
 
+function findRoadmapNode(
+  nodes: RoadmapTaskNode[],
+  taskId: string,
+): RoadmapTaskNode | null {
+  for (const node of nodes) {
+    if (node.id === taskId) return node;
+    const descendant = findRoadmapNode(node.children, taskId);
+    if (descendant) return descendant;
+  }
+  return null;
+}
+
 function timelineLabel(granularity: Granularity, index: number) {
   if (granularity === "hours") return `${String(9 + index).padStart(2, "0")}:00`;
   if (granularity === "days") return ["Mon 09", "Tue 10", "Wed 11", "Thu 12", "Fri 13"][index % 5];
@@ -361,23 +406,10 @@ function trackerTimelineLabel(
   return formatTaskTrackerDate(item.scheduledFor, today);
 }
 
-function featureProgress(feature: Feature, bundle: DashboardBundle, steps: WorkplanStep[]) {
-  const gates = bundle.gates.filter((gate) => gate.feature_id === feature.id);
-  const plans = new Set(
-    bundle.workplans.filter((plan) => plan.feature_id === feature.id).map((plan) => plan.id),
-  );
-  const featureSteps = steps.filter((step) => plans.has(step.workplan_id));
-  const total = gates.length + featureSteps.length;
-  const complete =
-    gates.filter((gate) => gate.status === "pass").length +
-    featureSteps.filter((step) => step.status === "done").length;
-  if (total) return Math.round((complete / total) * 100);
-  return feature.status === "done" ? 100 : feature.status === "validating" ? 80 : 28;
-}
-
 export function SushicodeWorkspace({
   bundle,
   documentationNodes,
+  roadmapBundle,
   taskTrackerItems,
 }: WorkspaceProps) {
   const initialNodes = useMemo(
@@ -426,10 +458,14 @@ export function SushicodeWorkspace({
   const [parsingTasks, setParsingTasks] = useState(false);
   const [actioningTaskId, setActioningTaskId] = useState<string | null>(null);
 
-  const [features, setFeatures] = useState(bundle.features);
-  const [steps, setSteps] = useState(bundle.steps);
-  const [activeFeatureId, setActiveFeatureId] = useState<string | null>(null);
-  const [showSuggestion, setShowSuggestion] = useState(true);
+  const [roadmapTasks, setRoadmapTasks] = useState(roadmapBundle.tasks);
+  const [roadmapDependencies] = useState(roadmapBundle.dependencies);
+  const [activeRoadmapTaskId, setActiveRoadmapTaskId] = useState<string | null>(
+    null,
+  );
+  const [updatingRoadmapTaskId, setUpdatingRoadmapTaskId] = useState<
+    string | null
+  >(null);
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, DocumentationNode[]>();
@@ -460,7 +496,15 @@ export function SushicodeWorkspace({
   const orderedTimeline = [...timeline].sort((a, b) =>
     priorityMode ? b.priority - a.priority : timeline.indexOf(a) - timeline.indexOf(b),
   );
-  const activeFeature = features.find((feature) => feature.id === activeFeatureId) ?? null;
+  const roadmapTree = useMemo(
+    () => buildRoadmapTree(roadmapTasks),
+    [roadmapTasks],
+  );
+  const activeRoadmapTask =
+    roadmapTasks.find((task) => task.id === activeRoadmapTaskId) ?? null;
+  const activeRoadmapNode = activeRoadmapTaskId
+    ? findRoadmapNode(roadmapTree.roots, activeRoadmapTaskId)
+    : null;
 
   async function persistNodeMove(node: DocumentationNode, point: Point, parentId = node.parent_id) {
     if (!backendEnabled || node.id.startsWith("demo-")) return;
@@ -713,7 +757,10 @@ export function SushicodeWorkspace({
   async function actionTrackerItem(item: TaskTrackerItem) {
     setActioningTaskId(item.id);
     setToast("Updating documentation…");
-    const result = await trackerRequest<{ item: TaskTrackerItem }>(
+    const result = await trackerRequest<{
+      item: TaskTrackerItem;
+      roadmap: RoadmapTask;
+    }>(
       `/api/task-tracker/${item.id}/action`,
       {
         method: "POST",
@@ -739,54 +786,66 @@ export function SushicodeWorkspace({
       setToast(result.error);
       return;
     }
+    setRoadmapTasks((current) => {
+      const roadmap = result.data.roadmap;
+      return current.some((task) => task.id === roadmap.id)
+        ? current.map((task) => (task.id === roadmap.id ? roadmap : task))
+        : [...current, roadmap];
+    });
+    setActiveRoadmapTaskId(result.data.roadmap.id);
     setToast("Documentation updated · roadmap task ready");
   }
 
-  function createFeature() {
-    const title = window.prompt("Feature name");
-    if (!title?.trim()) return;
-    const now = new Date().toISOString();
-    setFeatures((current) => [
-      ...current,
-      {
-        id: `local-feature-${Date.now()}`,
-        project_id: bundle.project.id,
-        slug: slugify(title),
-        title: title.trim(),
-        summary: "Human-created feature awaiting implementation detail.",
-        status: "planned",
-        frontend_notes: null,
-        backend_notes: null,
-        module_ids: [],
-        created_at: now,
-        updated_at: now,
-      },
-    ]);
-    setToast("Feature added to the plan");
-  }
-
-  async function toggleStep(step: WorkplanStep) {
-    const status = step.status === "done" ? "ready" : "done";
-    setSteps((current) =>
-      current.map((item) => (item.id === step.id ? { ...item, status } : item)),
-    );
-    if (bundle.source === "supabase") {
-      const result = await updateWorkplanStep({ ...step, status });
-      if (!result.ok) setToast(result.error);
+  async function updateRoadmapTask(
+    task: RoadmapTask,
+    changes: Partial<Pick<RoadmapTask, "status" | "progress_percent">>,
+  ) {
+    setUpdatingRoadmapTaskId(task.id);
+    const result = await roadmapRequest<RoadmapTask>(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        parent_task_id: task.parent_task_id,
+        slug: task.slug,
+        title: task.title,
+        description: task.description,
+        status: changes.status ?? task.status,
+        progress_percent: changes.progress_percent ?? task.progress_percent,
+        estimate_minutes: task.estimate_minutes,
+        planning_prompt: task.planning_prompt,
+        implementation_prompt: task.implementation_prompt,
+        validation_gate: task.validation_gate,
+        sort_order: task.sort_order,
+        expected_lock_version: task.lock_version,
+        dependency_ids: roadmapDependencies
+          .filter((dependency) => dependency.task_id === task.id)
+          .map((dependency) => dependency.depends_on_task_id),
+      }),
+    });
+    setUpdatingRoadmapTaskId(null);
+    if (!result.ok) {
+      setToast(
+        result.status === 409
+          ? "This roadmap task changed elsewhere. Refresh and review the latest version."
+          : result.error,
+      );
+      return;
     }
+    setRoadmapTasks((current) =>
+      current.map((candidate) =>
+        candidate.id === result.data.id ? result.data : candidate,
+      ),
+    );
+    setToast(
+      result.data.status === "done"
+        ? "Roadmap task completed"
+        : "Roadmap task updated",
+    );
   }
 
   const openTimeline = timeline.find((item) => item.id === openTimelineId) ?? null;
   const openTracker = openTimelineId?.startsWith("tracker-")
     ? trackerItems.find((item) => `tracker-${item.id}` === openTimelineId) ?? null
     : null;
-  const activePlans = new Set(
-    bundle.workplans
-      .filter((plan) => plan.feature_id === activeFeatureId)
-      .map((plan) => plan.id),
-  );
-  const activeSteps = steps.filter((step) => activePlans.has(step.workplan_id));
-
   return (
     <main className="workspace-shell">
       <span className="sr-only">sushicode is code</span>
@@ -817,7 +876,7 @@ export function SushicodeWorkspace({
             <Icon name="hide-left" />
           </button>
           <button
-            aria-label={hideRight ? "Show features" : "Hide features"}
+            aria-label={hideRight ? "Show roadmap" : "Hide roadmap"}
             className={hideRight ? "icon-button active" : "icon-button"}
             onClick={() => setHideRight((value) => !value)}
             type="button"
@@ -1160,71 +1219,127 @@ export function SushicodeWorkspace({
 
       {!hideRight ? (
         <aside className="floating-panel feature-panel">
-          {activeFeature ? (
+          {activeRoadmapTask ? (
             <div className="feature-detail">
               <button
                 className="back-button"
-                onClick={() => setActiveFeatureId(null)}
+                onClick={() => setActiveRoadmapTaskId(null)}
                 type="button"
               >
-                <Icon name="arrow-left" /> All features
+                <Icon name="arrow-left" /> All roadmap tasks
               </button>
               <div className="detail-feature-heading">
-                <span className={`status-icon ${activeFeature.status}`}>
+                <span className={`status-icon ${activeRoadmapTask.status}`}>
                   <Icon name="sparkle" />
                 </span>
                 <div>
-                  <span className="eyebrow">{activeFeature.status.replace("_", " ")}</span>
-                  <h2>{activeFeature.title}</h2>
+                  <span className="eyebrow">
+                    {activeRoadmapTask.status.replace("_", " ")}
+                  </span>
+                  <h2>{activeRoadmapTask.title}</h2>
                 </div>
               </div>
-              <p className="feature-summary">{activeFeature.summary}</p>
+              <p className="feature-summary">
+                {activeRoadmapTask.description || "No description added yet."}
+              </p>
               <div className="detail-progress">
                 <div>
                   <span>Overall progress</span>
-                  <strong>{featureProgress(activeFeature, bundle, steps)}%</strong>
+                  <strong>{activeRoadmapTask.progress_percent}%</strong>
                 </div>
                 <div className="progress-track large">
                   <span
-                    style={{ width: `${featureProgress(activeFeature, bundle, steps)}%` }}
+                    style={{ width: `${activeRoadmapTask.progress_percent}%` }}
                   />
                 </div>
               </div>
+              <div className="roadmap-estimate">
+                <span>
+                  {formatMinutes(estimatedRemainingMinutes(activeRoadmapTask))} remaining
+                </span>
+                <span>{formatMinutes(activeRoadmapTask.estimate_minutes)} estimated</span>
+              </div>
               <div className="subtask-heading">
-                <strong>Execution plan</strong>
-                <span>{activeSteps.filter((step) => step.status === "done").length}/{activeSteps.length}</span>
+                <strong>Subtasks</strong>
+                <span>
+                  {activeRoadmapNode?.children.filter((task) => task.status === "done").length ?? 0}/
+                  {activeRoadmapNode?.children.length ?? 0}
+                </span>
               </div>
               <div className="subtask-list">
-                {activeSteps.length ? (
-                  activeSteps.map((step) => (
-                    <button
-                      className={step.status === "done" ? "subtask done" : "subtask"}
-                      key={step.id}
-                      onClick={() => void toggleStep(step)}
-                      type="button"
+                {activeRoadmapNode?.children.length ? (
+                  activeRoadmapNode.children.map((task) => (
+                    <div
+                      className={task.status === "done" ? "subtask done" : "subtask"}
+                      key={task.id}
                     >
                       <span className="task-check">
-                        {step.status === "done" ? <Icon name="check" size={13} /> : null}
+                        {task.status === "done" ? <Icon name="check" size={13} /> : null}
                       </span>
                       <span>
-                        <strong>{step.title}</strong>
-                        <small>{step.status.replace("_", " ")}</small>
+                        <strong>{task.title}</strong>
+                        <small>
+                          {task.status.replace("_", " ")} ·{" "}
+                          {formatMinutes(estimatedRemainingMinutes(task))} remaining
+                        </small>
                       </span>
-                    </button>
+                    </div>
                   ))
                 ) : (
-                  <div className="empty-state">The planning agent has not created subtasks yet.</div>
+                  <div className="empty-state">No subtasks have been planned yet.</div>
                 )}
               </div>
-              <div className="agent-footer">
-                <div className="agent-stack">
-                  <span>AI</span>
-                  <span>SW</span>
+              <details className="roadmap-contract">
+                <summary>Execution contract</summary>
+                <div>
+                  <strong>Planning</strong>
+                  <p>{activeRoadmapTask.planning_prompt}</p>
                 </div>
-                <span>2 agents assigned</span>
-                <button type="button">
-                  <Icon name="more" />
-                </button>
+                <div>
+                  <strong>Implementation</strong>
+                  <p>{activeRoadmapTask.implementation_prompt}</p>
+                </div>
+                <div>
+                  <strong>Validation gate</strong>
+                  <p>{activeRoadmapTask.validation_gate}</p>
+                </div>
+              </details>
+              <div className="roadmap-actions">
+                {activeRoadmapTask.status === "planned" ||
+                activeRoadmapTask.status === "ready" ? (
+                  <button
+                    className="add-button"
+                    disabled={updatingRoadmapTaskId === activeRoadmapTask.id}
+                    onClick={() =>
+                      void updateRoadmapTask(activeRoadmapTask, {
+                        status: "in_progress",
+                      })
+                    }
+                    type="button"
+                  >
+                    Start task
+                  </button>
+                ) : null}
+                {activeRoadmapTask.status !== "done" ? (
+                  <button
+                    className="button-quiet"
+                    disabled={updatingRoadmapTaskId === activeRoadmapTask.id}
+                    onClick={() => {
+                      if (window.confirm(`Mark “${activeRoadmapTask.title}” complete?`)) {
+                        void updateRoadmapTask(activeRoadmapTask, {
+                          status: "done",
+                          progress_percent: 100,
+                        });
+                      }
+                    }}
+                    type="button"
+                  >
+                    Mark complete
+                  </button>
+                ) : null}
+                <a className="button-quiet" href={`/tasks/${activeRoadmapTask.id}`}>
+                  View dependency graph
+                </a>
               </div>
             </div>
           ) : (
@@ -1232,96 +1347,61 @@ export function SushicodeWorkspace({
               <div className="panel-header">
                 <div>
                   <span className="eyebrow">Agent plan</span>
-                  <h2>Features</h2>
+                  <h2>Roadmap</h2>
                 </div>
-                <button className="icon-button subtle" onClick={createFeature} type="button">
-                  <Icon name="plus" />
-                </button>
               </div>
               <div className="feature-overview">
-                <span>{features.length} active features</span>
-                <button type="button">
-                  <Icon name="search" />
-                </button>
+                <span>{roadmapTree.roots.length} top-level tasks</span>
+                <a href="/tasks" aria-label="Open roadmap">
+                  <Icon name="chevron" />
+                </a>
               </div>
               <div className="feature-scroll">
-                {showSuggestion ? (
-                  <div className="suggestion-card">
-                    <div className="suggestion-heading">
-                      <span><Icon name="sparkle" /> AI suggestion</span>
-                      <small>Review</small>
-                    </div>
-                    <strong>Canvas collaboration presence</strong>
-                    <p>Show who or which agent is actively changing each branch.</p>
-                    <div className="suggestion-actions">
-                      <button onClick={() => setShowSuggestion(false)} type="button">
-                        Dismiss
-                      </button>
-                      <button
-                        className="approve"
-                        onClick={() => {
-                          const now = new Date().toISOString();
-                          setFeatures((current) => [
-                            ...current,
-                            {
-                              id: `approved-${Date.now()}`,
-                              project_id: bundle.project.id,
-                              slug: "canvas-collaboration-presence",
-                              title: "Canvas collaboration presence",
-                              summary: "See humans and agents working in the architecture in real time.",
-                              status: "planned",
-                              frontend_notes: null,
-                              backend_notes: null,
-                              module_ids: [],
-                              created_at: now,
-                              updated_at: now,
-                            },
-                          ]);
-                          setShowSuggestion(false);
-                          setToast("AI feature approved");
-                        }}
-                        type="button"
-                      >
-                        <Icon name="check" /> Approve
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {features.map((feature) => {
-                  const progress = featureProgress(feature, bundle, steps);
+                {roadmapTree.roots.map((task) => {
+                  const remaining = estimatedRemainingMinutes(task);
                   return (
                     <button
                       className="feature-card"
-                      key={feature.id}
-                      onClick={() => setActiveFeatureId(feature.id)}
+                      key={task.id}
+                      onClick={() => setActiveRoadmapTaskId(task.id)}
                       type="button"
                     >
                       <div className="feature-card-top">
-                        <span className={`status-icon ${feature.status}`}>
-                          {feature.status === "done" ? (
+                        <span className={`status-icon ${task.status}`}>
+                          {task.status === "done" ? (
                             <Icon name="check" size={13} />
                           ) : (
                             <Icon name="sparkle" size={13} />
                           )}
                         </span>
-                        <span className="feature-status">{feature.status.replace("_", " ")}</span>
+                        <span className="feature-status">{task.status.replace("_", " ")}</span>
                         <Icon name="chevron" size={14} />
                       </div>
-                      <strong>{feature.title}</strong>
-                      <span className="feature-description">{feature.summary}</span>
+                      <strong>{task.title}</strong>
+                      <span className="feature-description">
+                        {task.description || "Execution details are being prepared."}
+                      </span>
                       <div className="feature-progress">
                         <div className="progress-track">
-                          <span style={{ width: `${progress}%` }} />
+                          <span style={{ width: `${task.progress_percent}%` }} />
                         </div>
-                        <b>{progress}%</b>
+                        <b>{task.progress_percent}%</b>
                       </div>
+                      <span className="roadmap-card-meta">
+                        {task.children.length} subtasks · {formatMinutes(remaining)} remaining
+                      </span>
                     </button>
                   );
                 })}
+                {!roadmapTree.roots.length ? (
+                  <div className="empty-state">
+                    Action a timeline item to add it to the executable roadmap.
+                  </div>
+                ) : null}
               </div>
-              <button className="new-feature" onClick={createFeature} type="button">
-                <Icon name="plus" /> Create feature
-              </button>
+              <a className="new-feature" href="/tasks">
+                Open roadmap <Icon name="chevron" />
+              </a>
             </>
           )}
         </aside>
