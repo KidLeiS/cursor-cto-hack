@@ -387,14 +387,110 @@ function trackerTimelineItem(item: TaskTrackerItem): TimelineItem {
   };
 }
 
+function timelineDemoDate(offsetDays: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function demoTimelineItems(): TimelineItem[] {
+  return [
+    {
+      id: "demo-hour-ia-review",
+      title: "Review IA branch labels",
+      note: "Check that each canvas branch uses the same language as the user story.",
+      priority: 5,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(0),
+    },
+    {
+      id: "demo-hour-agent-handoff",
+      title: "Write agent handoff note",
+      note: "Capture the next prompt for turning notes into execution-ready work.",
+      priority: 4,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(0),
+    },
+    {
+      id: "demo-hour-ui-pass",
+      title: "Polish canvas interactions",
+      note: "Verify click-to-edit, delete guardrails, and sorted layout behavior.",
+      priority: 3,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(0),
+    },
+    {
+      id: "demo-day-roadmap-sync",
+      title: "Sync roadmap tasks",
+      note: "Connect the human notes to roadmap tasks and confirm the execution queue.",
+      priority: 4,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(1),
+    },
+    {
+      id: "demo-day-design-review",
+      title: "Design review checkpoint",
+      note: "Review panel density, light mode contrast, and note attachment flow.",
+      priority: 3,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(2),
+    },
+    {
+      id: "demo-day-client-update",
+      title: "Prepare client update",
+      note: "Summarize what changed in IA, timeline, and execution progress.",
+      priority: 2,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(3),
+    },
+    {
+      id: "demo-week-infra-plan",
+      title: "Plan persistence polish",
+      note: "Identify what note metadata needs first-class backend persistence.",
+      priority: 3,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(7),
+    },
+    {
+      id: "demo-week-agent-metrics",
+      title: "Agent progress metrics",
+      note: "Define how progress bars should reflect actual swarm execution.",
+      priority: 2,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(14),
+    },
+    {
+      id: "demo-week-launch-story",
+      title: "Launch narrative",
+      note: "Turn the workspace flow into a crisp demo story for the hackathon.",
+      priority: 5,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(21),
+    },
+  ];
+}
+
 function buildTimeline(items: TaskTrackerItem[]): TimelineItem[] {
-  return [...items]
+  const trackerItems = [...items]
     .sort(
       (a, b) =>
         a.scheduled_for.localeCompare(b.scheduled_for) ||
         TRACKER_PRIORITY[b.priority] - TRACKER_PRIORITY[a.priority],
     )
     .map(trackerTimelineItem);
+  return [...trackerItems, ...demoTimelineItems()];
 }
 
 function findRoadmapNode(
