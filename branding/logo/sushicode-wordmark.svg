@@ -1,0 +1,16 @@
+<svg width="320" height="72" viewBox="0 0 320 72" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="sushicode">
+  <title>sushicode wordmark</title>
+  <!-- mark -->
+  <g>
+    <rect x="4" y="4" width="64" height="64" rx="14" fill="#0f1412"/>
+    <rect x="16" y="38" width="40" height="16" rx="8" fill="#e8f0ea"/>
+    <rect x="18" y="26" width="36" height="14" rx="7" fill="#c4f082"/>
+    <path d="M31 30.5 L27 33 L31 35.5" stroke="#14200f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M41 30.5 L45 33 L41 35.5" stroke="#14200f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <!-- wordmark -->
+  <text x="84" y="47"
+        font-family="Fraunces, 'Times New Roman', serif"
+        font-size="34" font-weight="560" letter-spacing="-1"
+        fill="#e8f0ea">sushi<tspan fill="#c4f082">code</tspan></text>
+</svg>
