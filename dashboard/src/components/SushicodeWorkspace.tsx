@@ -80,6 +80,49 @@ type TrackerApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; data?: TaskTrackerItem };
 
+type TaskDraft = {
+  title: string;
+  description: string;
+  priority: TaskTrackerPriority;
+  scheduled_for: string;
+  due_on: string;
+  estimate_minutes: string;
+};
+
+type TaskActionResponse = {
+  item: TaskTrackerItem;
+  documentation: DocumentationNode;
+  documentation_changes: Array<{
+    operation: "created" | "updated";
+    node: DocumentationNode;
+  }>;
+  agent_summary: string;
+  roadmap: RoadmapTask;
+};
+
+type TaskActionReceipt = Pick<
+  TaskActionResponse,
+  "documentation_changes" | "agent_summary" | "roadmap"
+> & { taskId: string };
+
+function taskDraftFrom(item: TaskTrackerItem): TaskDraft {
+  return {
+    title: item.title,
+    description: item.description,
+    priority: item.priority,
+    scheduled_for: item.scheduled_for,
+    due_on: item.due_on ?? "",
+    estimate_minutes: item.estimate_minutes?.toString() ?? "",
+  };
+}
+
+function priorityFromLevel(level: number): TaskTrackerPriority {
+  if (level >= 5) return "urgent";
+  if (level === 4) return "high";
+  if (level === 3) return "medium";
+  return "low";
+}
+
 type RoadmapApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; status: number };
@@ -382,7 +425,7 @@ function trackerTimelineItem(item: TaskTrackerItem): TimelineItem {
     title: item.title,
     note: item.description,
     priority: TRACKER_PRIORITY[item.priority],
-    kind: item.status === "actioned" ? "task" : "note",
+    kind: ["actioned", "completed"].includes(item.status) ? "task" : "note",
     status: item.status,
     scheduledFor: item.scheduled_for,
   };
@@ -581,6 +624,9 @@ export function SushicodeWorkspace({
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const taskInputRef = useRef<HTMLTextAreaElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNodeClickRef = useRef(false);
   const [nodeMenuId, setNodeMenuId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -607,10 +653,25 @@ export function SushicodeWorkspace({
   const [timeline, setTimeline] = useState(() => buildTimeline(taskTrackerItems));
   const [openTimelineId, setOpenTimelineId] = useState<string | null>(null);
   const [attachedNoteId, setAttachedNoteId] = useState<string | null>(null);
+  const [floatingAttach, setFloatingAttach] = useState<{
+    itemId: string;
+    left: number;
+    top: number;
+  } | null>(null);
   const [taskInput, setTaskInput] = useState("");
   const [parsingTasks, setParsingTasks] = useState(false);
+  const [recordingTasks, setRecordingTasks] = useState(false);
+  const [transcribingTasks, setTranscribingTasks] = useState(false);
   const [actioningTaskId, setActioningTaskId] = useState<string | null>(null);
-  const [taskDraft, setTaskDraft] = useState({
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const [trackerEditDraft, setTrackerEditDraft] = useState<TaskDraft | null>(
+    null,
+  );
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dropTaskId, setDropTaskId] = useState<string | null>(null);
+  const [actionReceipt, setActionReceipt] =
+    useState<TaskActionReceipt | null>(null);
+  const [modalTaskDraft, setModalTaskDraft] = useState({
     title: "",
     details: "",
     scheduledFor: localIsoDate(),
@@ -632,6 +693,19 @@ export function SushicodeWorkspace({
     summary: string;
     status: RoadmapTask["status"];
   }>({ title: "", summary: "", status: "planned" });
+
+  useEffect(
+    () => () => {
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        if (recorder.state !== "inactive") recorder.stop();
+        recorder.stream.getTracks().forEach((track) => track.stop());
+      }
+    },
+    [],
+  );
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, DocumentationNode[]>();
@@ -945,7 +1019,7 @@ export function SushicodeWorkspace({
   }
 
   function handleCanvasPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest(".ia-node")) return;
+    if ((event.target as HTMLElement).closest(".ia-node, .canvas-controls")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setPanDrag({
       pointerX: event.clientX,
@@ -1178,6 +1252,116 @@ export function SushicodeWorkspace({
     event.target.value = "";
   }
 
+  async function transcribeTaskRecording(audio: Blob) {
+    if (audio.size === 0) {
+      setToast("No audio was captured. Try the microphone again.");
+      return;
+    }
+    if (audio.size > 4 * 1024 * 1024) {
+      setToast("The recording is too large. Keep task notes under one minute.");
+      return;
+    }
+
+    setTranscribingTasks(true);
+    setToast("Cloudflare is transcribing your task…");
+    const formData = new FormData();
+    formData.set(
+      "audio",
+      new File([audio], "task-recording", {
+        type: audio.type || "audio/webm",
+      }),
+    );
+    try {
+      const response = await fetch("/api/task-tracker/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const body = await response.json();
+      if (!response.ok || !body.ok || typeof body.data?.text !== "string") {
+        setToast(body.error || "The recording could not be transcribed.");
+        return;
+      }
+      const transcript = body.data.text.trim();
+      setTaskInput((current) =>
+        [current.trim(), transcript].filter(Boolean).join(" "),
+      );
+      setToast("Speech added to the task input");
+      requestAnimationFrame(() => taskInputRef.current?.focus());
+    } catch {
+      setToast("The transcription service could not be reached.");
+    } finally {
+      setTranscribingTasks(false);
+    }
+  }
+
+  async function toggleTaskRecording() {
+    const current = mediaRecorderRef.current;
+    if (current?.state === "recording") {
+      current.stop();
+      return;
+    }
+    if (transcribingTasks || parsingTasks) return;
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setToast("This browser does not support microphone recording.");
+      return;
+    }
+
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      const mimeType = [
+        "audio/webm;codecs=opus",
+        "audio/mp4;codecs=mp4a.40.2",
+        "audio/webm",
+        "audio/mp4",
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (recordingTimeoutRef.current) {
+          clearTimeout(recordingTimeoutRef.current);
+          recordingTimeoutRef.current = null;
+        }
+        recorder.stream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        setRecordingTasks(false);
+        const audio = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        audioChunksRef.current = [];
+        void transcribeTaskRecording(audio);
+      };
+      recorder.onerror = () => {
+        setToast("Microphone recording failed. Try again.");
+      };
+      recorder.start();
+      setRecordingTasks(true);
+      setToast("Listening… click the microphone to stop");
+      recordingTimeoutRef.current = setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 60_000);
+    } catch {
+      stream?.getTracks().forEach((track) => track.stop());
+      setToast("Microphone access was not granted.");
+    }
+  }
+
   async function saveEditor() {
     if (!editorNode) return;
     if (!editorTitle.trim() || !editorSlug.trim()) {
@@ -1296,15 +1480,15 @@ export function SushicodeWorkspace({
   async function addStructuredTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const prompt = [
-      taskDraft.title,
-      taskDraft.details,
-      `Schedule for ${taskDraft.scheduledFor}.`,
-      `Priority: ${taskDraft.priority}.`,
+      modalTaskDraft.title,
+      modalTaskDraft.details,
+      `Schedule for ${modalTaskDraft.scheduledFor}.`,
+      `Priority: ${modalTaskDraft.priority}.`,
     ]
       .filter(Boolean)
       .join("\n");
     if (await submitTaskInput(prompt)) {
-      setTaskDraft({
+      setModalTaskDraft({
         title: "",
         details: "",
         scheduledFor: localIsoDate(),
@@ -1317,6 +1501,7 @@ export function SushicodeWorkspace({
   }
 
   function attachNoteToPrompt(item: TimelineItem) {
+    setFloatingAttach(null);
     setAttachedNoteId(item.id);
     setOpenTimelineId(null);
     setLeftPanelMode("chat");
@@ -1324,13 +1509,129 @@ export function SushicodeWorkspace({
     window.setTimeout(() => taskInputRef.current?.focus(), 0);
   }
 
+  function replaceTrackerItem(updated: TaskTrackerItem) {
+    setTrackerItems((current) =>
+      current.map((candidate) =>
+        candidate.id === updated.id ? updated : candidate,
+      ),
+    );
+    setTimeline((current) =>
+      current.map((candidate) =>
+        candidate.id === `tracker-${updated.id}`
+          ? trackerTimelineItem(updated)
+          : candidate,
+      ),
+    );
+    setTrackerEditDraft(taskDraftFrom(updated));
+  }
+
+  async function mutateTrackerItem(
+    item: TaskTrackerItem,
+    body: Record<string, unknown>,
+  ): Promise<TaskTrackerItem | null> {
+    setSavingTaskId(item.id);
+    const result = await trackerRequest<TaskTrackerItem>(
+      `/api/task-tracker/${item.id}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    );
+    setSavingTaskId(null);
+    if (!result.ok) {
+      if (result.data) replaceTrackerItem(result.data);
+      setToast(result.error);
+      return null;
+    }
+    replaceTrackerItem(result.data);
+    return result.data;
+  }
+
+  async function saveTaskDraft(item: TaskTrackerItem) {
+    if (!trackerEditDraft) return;
+    const estimate = trackerEditDraft.estimate_minutes.trim()
+      ? Number(trackerEditDraft.estimate_minutes)
+      : null;
+    if (estimate !== null && (!Number.isInteger(estimate) || estimate <= 0)) {
+      setToast("Effort must be a positive number of minutes.");
+      return;
+    }
+    const updated = await mutateTrackerItem(item, {
+      operation: "edit",
+      expected_lock_version: item.lock_version,
+      title: trackerEditDraft.title,
+      description: trackerEditDraft.description,
+      priority: trackerEditDraft.priority,
+      scheduled_for: trackerEditDraft.scheduled_for,
+      due_on: trackerEditDraft.due_on || null,
+      estimate_minutes: estimate,
+    });
+    if (updated) setToast("Task edits saved");
+  }
+
+  async function completeTrackerItem(item: TaskTrackerItem) {
+    const updated = await mutateTrackerItem(item, {
+      operation: "complete",
+      expected_lock_version: item.lock_version,
+    });
+    if (updated) setToast("Task marked complete");
+  }
+
+  async function deleteTrackerItem(item: TaskTrackerItem) {
+    if (!window.confirm(`Delete “${item.title}”?`)) return;
+    setSavingTaskId(item.id);
+    const result = await trackerRequest<TaskTrackerItem>(
+      `/api/task-tracker/${item.id}`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({ expected_lock_version: item.lock_version }),
+      },
+    );
+    setSavingTaskId(null);
+    if (!result.ok) {
+      if (result.data) replaceTrackerItem(result.data);
+      setToast(result.error);
+      return;
+    }
+    const remaining = trackerItems.filter(
+      (candidate) => candidate.id !== item.id,
+    );
+    setTrackerItems(remaining);
+    setTimeline(buildTimeline(remaining));
+    setOpenTimelineId(null);
+    setActionReceipt(null);
+    setToast("Task deleted");
+  }
+
+  async function rescheduleTrackerItem(
+    item: TaskTrackerItem,
+    scheduledFor: string,
+    requestedDueOn: string | null = item.due_on,
+  ) {
+    const dueOn =
+      requestedDueOn === null
+        ? null
+        : requestedDueOn >= scheduledFor
+          ? requestedDueOn
+          : scheduledFor;
+    if (item.scheduled_for === scheduledFor && item.due_on === dueOn) return;
+    const updated = await mutateTrackerItem(item, {
+      operation: "reschedule",
+      expected_lock_version: item.lock_version,
+      scheduled_for: scheduledFor,
+      due_on: dueOn,
+    });
+    if (updated) {
+      const next = trackerItems.map((candidate) =>
+        candidate.id === updated.id ? updated : candidate,
+      );
+      setTimeline(buildTimeline(next));
+      setToast(`Rescheduled to ${formatTaskTrackerDate(scheduledFor, today)}`);
+    }
+  }
+
   async function actionTrackerItem(item: TaskTrackerItem): Promise<RoadmapTask | null> {
     setActioningTaskId(item.id);
-    setToast("Updating documentation…");
-    const result = await trackerRequest<{
-      item: TaskTrackerItem;
-      roadmap: RoadmapTask;
-    }>(
+    setActionReceipt(null);
+    setToast("Reviewing project documentation…");
+    const result = await trackerRequest<TaskActionResponse>(
       `/api/task-tracker/${item.id}/action`,
       {
         method: "POST",
@@ -1341,21 +1642,53 @@ export function SushicodeWorkspace({
 
     const updated = result.ok ? result.data.item : result.data;
     if (updated) {
-      setTrackerItems((current) =>
-        current.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
-      );
-      setTimeline((current) =>
-        current.map((candidate) =>
-          candidate.id === `tracker-${updated.id}`
-            ? trackerTimelineItem(updated)
-            : candidate,
-        ),
-      );
+      replaceTrackerItem(updated);
     }
     if (!result.ok) {
       setToast(result.error);
       return null;
     }
+    const changedNodes = result.data.documentation_changes.map(
+      (change) => change.node,
+    );
+    setNodes((current) => {
+      const byId = new Map(current.map((node) => [node.id, node]));
+      for (const node of changedNodes) byId.set(node.id, node);
+      return [...byId.values()];
+    });
+    setPositions((current) => {
+      const next = { ...current };
+      for (const node of changedNodes) {
+        next[node.id] = {
+          x: node.canvas_x,
+          y: node.canvas_y,
+        };
+      }
+      return next;
+    });
+    if (changedNodes[0]) {
+      setSelectedId(changedNodes[0].id);
+      setExpanded((current) => {
+        const next = new Set(current);
+        const byId = new Map(
+          [...nodes, ...changedNodes].map((node) => [node.id, node]),
+        );
+        for (const changed of changedNodes) {
+          let parentId = changed.parent_id;
+          while (parentId) {
+            next.add(parentId);
+            parentId = byId.get(parentId)?.parent_id ?? null;
+          }
+        }
+        return next;
+      });
+    }
+    setActionReceipt({
+      taskId: item.id,
+      documentation_changes: result.data.documentation_changes,
+      agent_summary: result.data.agent_summary,
+      roadmap: result.data.roadmap,
+    });
     setRoadmapTasks((current) => {
       const roadmap = result.data.roadmap;
       return current.some((task) => task.id === roadmap.id)
@@ -1364,7 +1697,9 @@ export function SushicodeWorkspace({
     });
     setActiveRoadmapTaskId(result.data.roadmap.id);
     router.refresh();
-    setToast("Documentation updated · roadmap task ready");
+    setToast(
+      `Updated ${changedNodes.length} ${changedNodes.length === 1 ? "document" : "documents"} · roadmap task ready`,
+    );
     return result.data.roadmap;
   }
 
@@ -1543,6 +1878,14 @@ export function SushicodeWorkspace({
   const openTracker = openTimelineId?.startsWith("tracker-")
     ? trackerItems.find((item) => `tracker-${item.id}` === openTimelineId) ?? null
     : null;
+  const openActionReceipt =
+    openTracker && actionReceipt?.taskId === openTracker.id
+      ? actionReceipt
+      : null;
+
+  useEffect(() => {
+    setTrackerEditDraft(openTracker ? taskDraftFrom(openTracker) : null);
+  }, [openTracker?.id, openTracker?.lock_version]);
   const mcpUrl =
     typeof window === "undefined"
       ? "https://YOUR-VERCEL-DOMAIN/api/mcp"
@@ -1828,33 +2171,140 @@ export function SushicodeWorkspace({
                 <span className={`kind-dot ${openTimeline.kind}`} />
                 <span>{openTimeline.status}</span>
               </div>
-              <h2>{openTimeline.title}</h2>
+              {openTracker && trackerEditDraft ? (
+                <input
+                  aria-label="Task title"
+                  className="task-title-input"
+                  disabled={!["pending", "failed"].includes(openTracker.status)}
+                  maxLength={200}
+                  onChange={(event) =>
+                    setTrackerEditDraft((current) =>
+                      current
+                        ? { ...current, title: event.target.value }
+                        : current,
+                    )
+                  }
+                  value={trackerEditDraft.title}
+                />
+              ) : (
+                <h2>{openTimeline.title}</h2>
+              )}
               <label className="note-label">
                 Note
                 <textarea
                   onChange={(event) =>
-                    setTimeline((current) =>
-                      current.map((item) =>
-                        item.id === openTimeline.id
-                          ? { ...item, note: event.target.value }
-                          : item,
-                      ),
+                    setTrackerEditDraft((current) =>
+                      current
+                        ? { ...current, description: event.target.value }
+                        : current,
                     )
                   }
-                  value={openTimeline.note}
+                  disabled={
+                    !openTracker ||
+                    !["pending", "failed"].includes(openTracker.status)
+                  }
+                  value={trackerEditDraft?.description ?? openTimeline.note}
                 />
               </label>
+              {openTracker && trackerEditDraft ? (
+                <div className="task-schedule-fields">
+                  <label>
+                    Scheduled
+                    <input
+                      disabled={[
+                        "actioning",
+                        "cancelled",
+                        "completed",
+                      ].includes(openTracker.status)}
+                      onChange={(event) =>
+                        setTrackerEditDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                scheduled_for: event.target.value,
+                              }
+                            : current,
+                        )
+                      }
+                      type="date"
+                      value={trackerEditDraft.scheduled_for}
+                    />
+                  </label>
+                  <label>
+                    Due
+                    <input
+                      disabled={[
+                        "actioning",
+                        "cancelled",
+                        "completed",
+                      ].includes(openTracker.status)}
+                      min={trackerEditDraft.scheduled_for}
+                      onChange={(event) =>
+                        setTrackerEditDraft((current) =>
+                          current
+                            ? { ...current, due_on: event.target.value }
+                            : current,
+                        )
+                      }
+                      type="date"
+                      value={trackerEditDraft.due_on}
+                    />
+                  </label>
+                  <label>
+                    Minutes
+                    <input
+                      disabled={
+                        !["pending", "failed"].includes(openTracker.status)
+                      }
+                      min="1"
+                      onChange={(event) =>
+                        setTrackerEditDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                estimate_minutes: event.target.value,
+                              }
+                            : current,
+                        )
+                      }
+                      placeholder="—"
+                      type="number"
+                      value={trackerEditDraft.estimate_minutes}
+                    />
+                  </label>
+                </div>
+              ) : null}
               <div className="context-card">
                 <Icon name="sparkle" />
                 <div>
                   <strong>
-                    {openTracker ? "Documentation update" : "Context understood"}
+                    {openActionReceipt
+                      ? "Action complete"
+                      : openTracker
+                        ? "Documentation plan"
+                        : "Context understood"}
                   </strong>
                   <p>
-                    {openTracker
-                      ? openTracker.documentation_update
+                    {openActionReceipt
+                      ? openActionReceipt.agent_summary
+                      : openTracker
+                        ? openTracker.documentation_update
                       : "Linked to the current project plan and visible agent activity."}
                   </p>
+                  {openActionReceipt ? (
+                    <ul className="task-action-results">
+                      {openActionReceipt.documentation_changes.map((change) => (
+                        <li key={change.node.id}>
+                          {change.operation === "created" ? "Created" : "Updated"}{" "}
+                          <strong>{change.node.title}</strong>
+                        </li>
+                      ))}
+                      <li>
+                        Roadmap <strong>{openActionReceipt.roadmap.title}</strong>{" "}
+                        is {openActionReceipt.roadmap.status}
+                      </li>
+                    </ul>
+                  ) : null}
                 </div>
               </div>
               <div className="detail-meta">
@@ -1863,15 +2313,27 @@ export function SushicodeWorkspace({
                   {[1, 2, 3, 4, 5].map((level) => (
                     <button
                       aria-label={`Set priority ${level}`}
-                      className={level <= openTimeline.priority ? "filled" : ""}
+                      className={
+                        level <=
+                        (trackerEditDraft
+                          ? TRACKER_PRIORITY[trackerEditDraft.priority]
+                          : openTimeline.priority)
+                          ? "filled"
+                          : ""
+                      }
+                      disabled={
+                        !openTracker ||
+                        !["pending", "failed"].includes(openTracker.status)
+                      }
                       key={level}
                       onClick={() =>
-                        setTimeline((current) =>
-                          current.map((item) =>
-                            item.id === openTimeline.id
-                              ? { ...item, priority: level }
-                              : item,
-                          ),
+                        setTrackerEditDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                priority: priorityFromLevel(level),
+                              }
+                            : current,
                         )
                       }
                       type="button"
@@ -1887,25 +2349,82 @@ export function SushicodeWorkspace({
                 <Icon name="sparkle" /> Attach to prompt
               </button>
               {openTracker ? (
-                <button
-                  className="add-button task-action-button"
-                  disabled={
-                    actioningTaskId !== null ||
-                    openTracker.status === "actioned" ||
-                    openTracker.status === "cancelled"
-                  }
-                  onClick={() => void actionTrackerItem(openTracker)}
-                  type="button"
-                >
-                  <Icon name={openTracker.status === "actioned" ? "check" : "sparkle"} />
-                  {actioningTaskId === openTracker.id
-                    ? "Updating documentation…"
-                    : openTracker.status === "actioned"
-                      ? "Ready on roadmap"
-                      : openTracker.status === "failed"
-                        ? "Retry action"
-                        : "Action task"}
-                </button>
+                <div className="task-detail-actions">
+                  <button
+                    className="add-button"
+                    disabled={
+                      savingTaskId !== null ||
+                      ["actioning", "cancelled", "completed"].includes(
+                        openTracker.status,
+                      )
+                    }
+                    onClick={() =>
+                      ["pending", "failed"].includes(openTracker.status)
+                        ? void saveTaskDraft(openTracker)
+                        : void rescheduleTrackerItem(
+                            openTracker,
+                            trackerEditDraft?.scheduled_for ??
+                              openTracker.scheduled_for,
+                            trackerEditDraft?.due_on || null,
+                          )
+                    }
+                    type="button"
+                  >
+                    {["pending", "failed"].includes(openTracker.status)
+                      ? "Save"
+                      : "Reschedule"}
+                  </button>
+                  <button
+                    className="add-button"
+                    disabled={
+                      savingTaskId !== null ||
+                      ["actioning", "cancelled", "completed"].includes(
+                        openTracker.status,
+                      )
+                    }
+                    onClick={() => void completeTrackerItem(openTracker)}
+                    type="button"
+                  >
+                    <Icon name="check" />{" "}
+                    {openTracker.status === "completed" ? "Completed" : "Complete"}
+                  </button>
+                  <button
+                    className="add-button task-action-button"
+                    disabled={
+                      actioningTaskId !== null ||
+                      openTracker.status === "actioned" ||
+                      openTracker.status === "cancelled" ||
+                      openTracker.status === "completed"
+                    }
+                    onClick={() => void actionTrackerItem(openTracker)}
+                    type="button"
+                  >
+                    <Icon
+                      name={
+                        openTracker.status === "actioned" ? "check" : "sparkle"
+                      }
+                    />
+                    {actioningTaskId === openTracker.id
+                      ? "Reviewing docs…"
+                      : openTracker.status === "actioned"
+                        ? "Ready on roadmap"
+                        : openTracker.status === "failed"
+                          ? "Retry action"
+                          : "Action task"}
+                  </button>
+                  <button
+                    aria-label="Delete task"
+                    className="task-delete-button"
+                    disabled={
+                      savingTaskId !== null ||
+                      openTracker.status === "actioning"
+                    }
+                    onClick={() => void deleteTrackerItem(openTracker)}
+                    type="button"
+                  >
+                    <Icon name="trash" /> Delete
+                  </button>
+                </div>
               ) : null}
             </div>
           ) : (
@@ -2027,14 +2546,48 @@ export function SushicodeWorkspace({
                       rows={3}
                       value={taskInput}
                     />
+                    {recordingTasks ? (
+                      <p aria-live="polite" className="voice-recording-hint">
+                        Listening — tap <strong>Stop</strong> to add the transcript
+                        to this text field.
+                      </p>
+                    ) : transcribingTasks ? (
+                      <p aria-live="polite" className="voice-recording-hint">
+                        Transcribing into this text field…
+                      </p>
+                    ) : null}
                     <div className="composer-actions">
                       <button
-                        aria-label="Start voice input"
-                        className="voice-button"
-                        onClick={() => setToast("Voice input ready")}
+                        aria-label={
+                          recordingTasks
+                            ? "Stop recording"
+                            : transcribingTasks
+                              ? "Transcribing recording"
+                              : "Start voice input"
+                        }
+                        aria-pressed={recordingTasks}
+                        className={
+                          recordingTasks
+                            ? "voice-button recording"
+                            : "voice-button"
+                        }
+                        disabled={parsingTasks || transcribingTasks}
+                        onClick={() => void toggleTaskRecording()}
+                        title={
+                          recordingTasks
+                            ? "Stop recording and add speech to the text field"
+                            : "Record speech into the text field"
+                        }
                         type="button"
                       >
-                        <Icon name="mic" />
+                        {recordingTasks ? (
+                          <>
+                            <Icon name="close" />
+                            <span>Stop</span>
+                          </>
+                        ) : (
+                          <Icon name="mic" />
+                        )}
                       </button>
                       <button
                         className="open-item-form"
@@ -2107,12 +2660,84 @@ export function SushicodeWorkspace({
                     </div>
                     <span>{orderedTimeline.length}</span>
                   </div>
-                  <div className="notes-list">
-                    {orderedTimeline.map((item, index) => (
-                      <div className="notes-list-row" key={item.id}>
+                  <div
+                    className="notes-list"
+                    onScroll={() => setFloatingAttach(null)}
+                  >
+                    {orderedTimeline.map((item, index) => {
+                      const tracker = item.id.startsWith("tracker-")
+                        ? trackerItems.find(
+                            (candidate) =>
+                              `tracker-${candidate.id}` === item.id,
+                          )
+                        : null;
+                      const canDrag =
+                        tracker &&
+                        !["actioning", "cancelled", "completed"].includes(
+                          tracker.status,
+                        );
+                      return (
+                      <div
+                        className={
+                          dropTaskId === tracker?.id
+                            ? "notes-list-row drop-target"
+                            : "notes-list-row"
+                        }
+                        key={item.id}
+                        onMouseEnter={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setFloatingAttach({
+                            itemId: item.id,
+                            left: rect.right + 10,
+                            top: rect.top + rect.height / 2,
+                          });
+                        }}
+                        onDragOver={(event) => {
+                          if (!draggedTaskId || !tracker) return;
+                          event.preventDefault();
+                          setDropTaskId(tracker.id);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const source = trackerItems.find(
+                            (candidate) => candidate.id === draggedTaskId,
+                          );
+                          setDraggedTaskId(null);
+                          setDropTaskId(null);
+                          if (source && tracker) {
+                            void rescheduleTrackerItem(
+                              source,
+                              tracker.scheduled_for,
+                            );
+                          }
+                        }}
+                      >
                         <button
-                          className="notes-list-card"
+                          className={
+                            draggedTaskId === tracker?.id
+                              ? "notes-list-card dragging"
+                              : "notes-list-card"
+                          }
+                          draggable={Boolean(canDrag)}
+                          onDragEnd={() => {
+                            setDraggedTaskId(null);
+                            setDropTaskId(null);
+                          }}
+                          onDragStart={(event) => {
+                            if (!tracker || !canDrag) {
+                              event.preventDefault();
+                              return;
+                            }
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", tracker.id);
+                            setDraggedTaskId(tracker.id);
+                          }}
                           onClick={() => setOpenTimelineId(item.id)}
+                          title={
+                            canDrag
+                              ? "Open task or drag onto another date to reschedule"
+                              : "Open task"
+                          }
                           type="button"
                         >
                           <span className={`kind-dot ${item.kind}`} />
@@ -2133,21 +2758,32 @@ export function SushicodeWorkspace({
                           </span>
                           <p>{item.note}</p>
                         </button>
-                        <button
-                          className="attach-note-button"
-                          onClick={() => attachNoteToPrompt(item)}
-                          type="button"
-                        >
-                          <Icon name="plus" /> Attach to prompt
-                        </button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
             </>
           )}
         </aside>
+      ) : null}
+
+      {floatingAttach && leftPanelMode === "notes" && !openTimeline ? (
+        <button
+          className="floating-attach-button"
+          onClick={() => {
+            const item = timeline.find(
+              (candidate) => candidate.id === floatingAttach.itemId,
+            );
+            if (item) attachNoteToPrompt(item);
+          }}
+          onMouseLeave={() => setFloatingAttach(null)}
+          style={{ left: floatingAttach.left, top: floatingAttach.top }}
+          type="button"
+        >
+          <Icon name="plus" /> Attach to prompt
+        </button>
       ) : null}
 
       {!hideRight ? (
@@ -2390,18 +3026,24 @@ export function SushicodeWorkspace({
                   <input
                     autoFocus
                     onChange={(event) =>
-                      setTaskDraft((current) => ({ ...current, title: event.target.value }))
+                      setModalTaskDraft((current) => ({
+                        ...current,
+                        title: event.target.value,
+                      }))
                     }
                     placeholder="What needs your attention?"
                     required
-                    value={taskDraft.title}
+                    value={modalTaskDraft.title}
                   />
                 </label>
                 <label>
                   Context
                   <textarea
                     onChange={(event) =>
-                      setTaskDraft((current) => ({ ...current, details: event.target.value }))
+                      setModalTaskDraft((current) => ({
+                        ...current,
+                        details: event.target.value,
+                      }))
                     }
                     onKeyDown={(event) => {
                       if (
@@ -2417,7 +3059,7 @@ export function SushicodeWorkspace({
                     }}
                     placeholder="Add decisions, constraints, or desired outcome…"
                     rows={4}
-                    value={taskDraft.details}
+                    value={modalTaskDraft.details}
                   />
                 </label>
                 <div className="form-grid">
@@ -2425,25 +3067,25 @@ export function SushicodeWorkspace({
                     Schedule
                     <input
                       onChange={(event) =>
-                        setTaskDraft((current) => ({
+                        setModalTaskDraft((current) => ({
                           ...current,
                           scheduledFor: event.target.value,
                         }))
                       }
                       type="date"
-                      value={taskDraft.scheduledFor}
+                      value={modalTaskDraft.scheduledFor}
                     />
                   </label>
                   <label>
                     Priority
                     <select
                       onChange={(event) =>
-                        setTaskDraft((current) => ({
+                        setModalTaskDraft((current) => ({
                           ...current,
                           priority: event.target.value as TaskTrackerPriority,
                         }))
                       }
-                      value={taskDraft.priority}
+                      value={modalTaskDraft.priority}
                     >
                       <option value="urgent">Urgent</option>
                       <option value="high">High</option>

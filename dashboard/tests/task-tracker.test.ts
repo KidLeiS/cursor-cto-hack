@@ -11,7 +11,10 @@ import {
   groupTaskTrackerItems,
 } from "../src/lib/task-tracker-calendar";
 import { upsertTaskDocumentationSection } from "../src/lib/task-tracker-actions";
-import { taskTrackerLlmOutputSchema } from "../src/lib/task-tracker-validation";
+import {
+  taskTrackerLlmOutputSchema,
+  updateTaskTrackerItemSchema,
+} from "../src/lib/task-tracker-validation";
 
 function trackerItem(
   overrides: Partial<TaskTrackerItem> = {},
@@ -37,6 +40,7 @@ function trackerItem(
     action_error: null,
     lock_version: 1,
     actioned_at: null,
+    completed_at: null,
     created_at: "2026-07-09T00:00:00.000Z",
     updated_at: "2026-07-09T00:00:00.000Z",
     ...overrides,
@@ -82,6 +86,43 @@ describe("task tracker schema", () => {
   it("rejects a due date before the scheduled date", () => {
     const parsed = taskTrackerLlmOutputSchema.safeParse({
       tasks: [{ ...llmTask, due_on: "2026-07-09" }],
+    });
+    assert.equal(parsed.success, false);
+  });
+
+  it("accepts edit, drag-reschedule, and manual completion mutations", () => {
+    const edit = updateTaskTrackerItemSchema.safeParse({
+      operation: "edit",
+      expected_lock_version: 2,
+      title: "Updated launch brief",
+      description: "Include the final approval.",
+      priority: "urgent",
+      scheduled_for: "2026-07-11",
+      due_on: "2026-07-12",
+      estimate_minutes: 90,
+    });
+    const reschedule = updateTaskTrackerItemSchema.safeParse({
+      operation: "reschedule",
+      expected_lock_version: 2,
+      scheduled_for: "2026-07-15",
+      due_on: "2026-07-15",
+    });
+    const complete = updateTaskTrackerItemSchema.safeParse({
+      operation: "complete",
+      expected_lock_version: 2,
+    });
+
+    assert.equal(edit.success, true);
+    assert.equal(reschedule.success, true);
+    assert.equal(complete.success, true);
+  });
+
+  it("rejects a drag-reschedule after its due date", () => {
+    const parsed = updateTaskTrackerItemSchema.safeParse({
+      operation: "reschedule",
+      expected_lock_version: 2,
+      scheduled_for: "2026-07-15",
+      due_on: "2026-07-14",
     });
     assert.equal(parsed.success, false);
   });

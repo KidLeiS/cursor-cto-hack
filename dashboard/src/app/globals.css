@@ -1595,7 +1595,7 @@ a.button-quiet:hover {
 
 .timeline-capture {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 31px;
+  grid-template-columns: minmax(0, 1fr) 31px 31px;
   gap: 6px;
   margin: 0 10px 10px;
 }
@@ -1629,6 +1629,19 @@ a.button-quiet:hover {
   border-radius: 5px;
   background: rgba(200, 255, 102, 0.08);
   color: var(--workspace-green);
+}
+
+.timeline-capture .task-mic-button {
+  border-color: var(--workspace-line);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--workspace-muted);
+}
+
+.timeline-capture .task-mic-button.recording {
+  border-color: rgba(255, 149, 92, 0.55);
+  background: rgba(255, 149, 92, 0.12);
+  color: var(--workspace-orange);
+  box-shadow: 0 0 0 2px rgba(255, 149, 92, 0.06);
 }
 
 .priority-toggle-row {
@@ -1770,6 +1783,20 @@ a.button-quiet:hover {
 .timeline-card:hover {
   border-color: var(--workspace-line-strong);
   background: rgba(255, 255, 255, 0.045);
+}
+
+.timeline-card[draggable="true"] {
+  cursor: grab;
+}
+
+.timeline-card.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.timeline-slot.drop-target .timeline-card {
+  border-color: rgba(200, 255, 102, 0.52);
+  background: rgba(200, 255, 102, 0.06);
 }
 
 .kind-dot {
@@ -1932,6 +1959,22 @@ a.button-quiet:hover {
   line-height: 1.25;
 }
 
+.task-title-input {
+  width: 100%;
+  margin-bottom: 24px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  outline: none;
+  background: transparent;
+  color: var(--workspace-text);
+  font: 600 18px/1.25 var(--font-body);
+}
+
+.task-title-input:focus {
+  border-bottom-color: rgba(200, 255, 102, 0.35);
+}
+
 .note-label {
   display: grid;
   gap: 8px;
@@ -1960,6 +2003,46 @@ a.button-quiet:hover {
   border-color: rgba(200, 255, 102, 0.35);
 }
 
+.note-label textarea:disabled,
+.task-title-input:disabled,
+.task-schedule-fields input:disabled {
+  opacity: 0.72;
+}
+
+.task-schedule-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.task-schedule-fields label {
+  display: grid;
+  gap: 5px;
+  color: var(--workspace-dim);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.task-schedule-fields label:last-child {
+  grid-column: 1 / -1;
+}
+
+.task-schedule-fields input {
+  min-width: 0;
+  height: 31px;
+  padding: 0 7px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 5px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--workspace-muted);
+  color-scheme: dark;
+  font: 9px var(--font-mono);
+}
+
 .context-card {
   display: flex;
   gap: 9px;
@@ -1985,6 +2068,23 @@ a.button-quiet:hover {
   line-height: 1.45;
 }
 
+.task-action-results {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 7px 0 0 15px;
+  border-top: 1px solid rgba(180, 148, 255, 0.13);
+  color: #837c92;
+  font-size: 8.5px;
+  line-height: 1.4;
+}
+
+.task-action-results strong {
+  display: inline;
+  color: #b9acdc;
+  font-size: inherit;
+}
+
 .detail-meta {
   display: flex;
   align-items: center;
@@ -1995,10 +2095,40 @@ a.button-quiet:hover {
 }
 
 .task-action-button {
+  grid-column: 1 / -1;
   width: 100%;
   justify-content: center;
-  margin-top: 14px;
   color: var(--workspace-green);
+}
+
+.task-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.task-detail-actions > .add-button {
+  justify-content: center;
+}
+
+.task-delete-button {
+  grid-column: 1 / -1;
+  display: flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 127, 101, 0.18);
+  border-radius: 5px;
+  background: rgba(255, 127, 101, 0.03);
+  color: #9b6258;
+  font-size: 9px;
+}
+
+.task-delete-button:hover {
+  border-color: rgba(255, 127, 101, 0.35);
+  color: var(--workspace-orange);
 }
 
 .priority-bars {
@@ -3309,6 +3439,28 @@ a.button-quiet:hover {
   color: var(--workspace-muted);
 }
 
+.voice-button.recording {
+  width: auto;
+  gap: 5px;
+  padding: 0 10px;
+  border-color: rgba(255, 127, 101, 0.55);
+  background: rgba(255, 127, 101, 0.12);
+  color: var(--workspace-orange);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.voice-recording-hint {
+  margin: 7px 0 -1px;
+  color: var(--workspace-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.voice-recording-hint strong {
+  color: var(--workspace-orange);
+}
+
 .send-button {
   margin-left: auto;
   border-color: rgba(200, 255, 102, 0.28);
@@ -3434,6 +3586,20 @@ a.button-quiet:hover {
 .notes-list-card:hover {
   border-color: var(--workspace-line-strong);
   background: rgba(255, 255, 255, 0.045);
+}
+
+.notes-list-card[draggable="true"] {
+  cursor: grab;
+}
+
+.notes-list-card.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.notes-list-row.drop-target .notes-list-card {
+  border-color: rgba(200, 255, 102, 0.52);
+  background: rgba(200, 255, 102, 0.06);
 }
 
 .notes-list-card .kind-dot {
@@ -3941,4 +4107,157 @@ a.button-quiet:hover {
 
 .sync-toast {
   background: rgba(255, 255, 255, 0.92);
+}
+
+.workspace-shell,
+.workspace-shell * {
+  font-family: var(--font-body-loaded), "Lato", Arial, sans-serif !important;
+}
+
+.workspace-shell code,
+.workspace-shell pre,
+.workspace-shell .eyebrow,
+.workspace-shell .topbar-center,
+.workspace-shell .canvas-label,
+.workspace-shell .node-header,
+.workspace-shell .node-footer,
+.workspace-shell .feature-status,
+.workspace-shell .sync-toast {
+  font-family: var(--font-mono-loaded), "DM Mono", monospace !important;
+}
+
+.workspace-shell .new-feature {
+  box-shadow: none !important;
+}
+
+.notes-list-card {
+  padding-right: 132px;
+}
+
+.attach-note-button {
+  right: 8px;
+  left: auto;
+  transform: translateY(-50%) translateX(6px);
+}
+
+.notes-list-row:hover .attach-note-button,
+.attach-note-button:focus-visible {
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Notes paper treatment and unclipped hover action */
+
+.notes-carousel {
+  margin-left: 20px;
+  padding: 0 20px 6px 0;
+}
+
+.note-preview-card {
+  position: relative;
+  overflow: hidden;
+  border-color: #ddd3ac;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 27px,
+      rgba(92, 116, 145, 0.12) 28px
+    ),
+    #fffdf2 !important;
+  box-shadow: 0 4px 12px rgba(61, 55, 38, 0.1);
+  transform: rotate(-0.3deg);
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease;
+}
+
+.note-preview-card:nth-child(even) {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 27px,
+      rgba(92, 116, 145, 0.12) 28px
+    ),
+    #fffaf0 !important;
+  transform: rotate(0.25deg);
+}
+
+.note-preview-card::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(225deg, #f5f3ee 50%, #e8dfbc 51%);
+  content: "";
+}
+
+.note-preview-card:hover {
+  border-color: #c9ba7c;
+  box-shadow: 0 8px 18px rgba(61, 55, 38, 0.14);
+  transform: translateY(-2px) rotate(0);
+}
+
+.notes-list-card {
+  padding-right: 14px;
+}
+
+.floating-attach-button {
+  position: absolute;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 13px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(95, 143, 25, 0.35);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #4f7d13;
+  font-family: var(--font-body-loaded), "Lato", Arial, sans-serif !important;
+  font-size: 14px;
+  box-shadow: 0 8px 20px rgba(38, 48, 36, 0.14);
+}
+
+.floating-attach-button:hover {
+  border-color: #5f8f19;
+  background: #f7fbea;
+}
+
+/* Complete light treatment for the document editor modal. */
+
+.wireframe-editor-backdrop {
+  background: rgba(236, 234, 227, 0.72);
+}
+
+.wireframe-editor,
+.wireframe-editor-fields,
+.wireframe-markdown-editor,
+.wireframe-assets,
+.wireframe-editor-footer,
+.wireframe-editor .mdxeditor,
+.wireframe-editor [contenteditable="true"],
+.wireframe-editor [class*="toolbar"] {
+  background: #ffffff !important;
+  color: #171c18 !important;
+}
+
+.wireframe-editor input,
+.wireframe-editor textarea,
+.wireframe-editor select {
+  border-color: rgba(23, 28, 24, 0.18) !important;
+  background: #fbfaf7 !important;
+  color: #171c18 !important;
+}
+
+.wireframe-editor button {
+  color: #394239;
+}
+
+.wireframe-editor-footer > button:last-child {
+  background: #5f8f19;
+  color: #ffffff;
 }

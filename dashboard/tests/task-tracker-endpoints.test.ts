@@ -5,6 +5,10 @@ import {
   POST as createTrackerItems,
 } from "../src/app/api/task-tracker/route";
 import { POST as actionTrackerItem } from "../src/app/api/task-tracker/[id]/action/route";
+import {
+  DELETE as deleteTrackerItem,
+  PATCH as updateTrackerItem,
+} from "../src/app/api/task-tracker/[id]/route";
 
 describe("task tracker endpoints", () => {
   it("lists the calendar demo without service credentials", async () => {
@@ -40,6 +44,48 @@ describe("task tracker endpoints", () => {
         body: JSON.stringify({ expected_lock_version: 1 }),
       }),
       { params: Promise.resolve({ id: "not-an-id" }) },
+    );
+    assert.equal(response.status, 400);
+  });
+
+  it("rejects malformed mutation ids before loading storage", async () => {
+    const context = { params: Promise.resolve({ id: "not-an-id" }) };
+    const updateResponse = await updateTrackerItem(
+      new Request("http://localhost/api/task-tracker/not-an-id", {
+        method: "PATCH",
+        body: JSON.stringify({
+          operation: "complete",
+          expected_lock_version: 1,
+        }),
+      }),
+      context,
+    );
+    const deleteResponse = await deleteTrackerItem(
+      new Request("http://localhost/api/task-tracker/not-an-id", {
+        method: "DELETE",
+        body: JSON.stringify({ expected_lock_version: 1 }),
+      }),
+      context,
+    );
+
+    assert.equal(updateResponse.status, 400);
+    assert.equal(deleteResponse.status, 400);
+  });
+
+  it("rejects invalid mutation payloads before loading storage", async () => {
+    const response = await updateTrackerItem(
+      new Request(
+        "http://localhost/api/task-tracker/30000000-0000-4000-8000-000000000001",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ operation: "complete" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          id: "30000000-0000-4000-8000-000000000001",
+        }),
+      },
     );
     assert.equal(response.status, 400);
   });
