@@ -37,6 +37,7 @@ import type {
   DocumentationAsset,
   DocumentationNode,
   RoadmapTask,
+  RoadmapTaskDependency,
   TaskTrackerItem,
   TaskTrackerPriority,
 } from "../../../shared/types";
@@ -479,6 +480,9 @@ export function SushicodeWorkspace({
   const [editorMarkdown, setEditorMarkdown] = useState("");
   const [editorAssets, setEditorAssets] = useState<WorkspaceAsset[]>([]);
   const [editorBusy, setEditorBusy] = useState(false);
+  const [showMcpSetup, setShowMcpSetup] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const syncEtag = useRef("");
 
   const [granularity, setGranularity] = useState<Granularity>("hours");
   const [priorityMode, setPriorityMode] = useState(false);
@@ -490,7 +494,9 @@ export function SushicodeWorkspace({
   const [actioningTaskId, setActioningTaskId] = useState<string | null>(null);
 
   const [roadmapTasks, setRoadmapTasks] = useState(roadmapBundle.tasks);
-  const [roadmapDependencies] = useState(roadmapBundle.dependencies);
+  const [roadmapDependencies, setRoadmapDependencies] = useState(
+    roadmapBundle.dependencies,
+  );
   const [activeRoadmapTaskId, setActiveRoadmapTaskId] = useState<string | null>(
     null,
   );
@@ -566,6 +572,85 @@ export function SushicodeWorkspace({
       });
     return () => controller.abort();
   }, [backendEnabled, editorNode?.id, editorNode?.content_version]);
+
+  useEffect(() => {
+    if (!backendEnabled) return;
+    let stopped = false;
+    let controller: AbortController | null = null;
+
+    async function syncWorkspace() {
+      if (
+        stopped ||
+        document.hidden ||
+        editorNodeId ||
+        editorBusy ||
+        drag ||
+        resize ||
+        movingId ||
+        updatingRoadmapTaskId
+      ) {
+        return;
+      }
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const response = await fetch("/api/workspace/sync", {
+          cache: "no-store",
+          headers: syncEtag.current ? { "If-None-Match": syncEtag.current } : {},
+          signal: controller.signal,
+        });
+        if (response.status === 304) {
+          setLastSyncedAt(new Date());
+          return;
+        }
+        if (!response.ok) return;
+        const body = (await response.json()) as {
+          ok: boolean;
+          documents: DocumentationNode[];
+          roadmap: {
+            tasks: RoadmapTask[];
+            dependencies: RoadmapTaskDependency[];
+          };
+          synced_at: string;
+        };
+        if (!body.ok || stopped) return;
+        syncEtag.current = response.headers.get("etag") ?? "";
+        setNodes(body.documents);
+        setPositions(initialPositions(body.documents));
+        setRoadmapTasks(body.roadmap.tasks);
+        setRoadmapDependencies(body.roadmap.dependencies);
+        setSelectedId((current) =>
+          current && body.documents.some((node) => node.id === current)
+            ? current
+            : body.documents[0]?.id ?? null,
+        );
+        setActiveRoadmapTaskId((current) =>
+          current && body.roadmap.tasks.some((task) => task.id === current)
+            ? current
+            : null,
+        );
+        setLastSyncedAt(new Date(body.synced_at));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+
+    void syncWorkspace();
+    const interval = window.setInterval(() => void syncWorkspace(), 2_000);
+    return () => {
+      stopped = true;
+      controller?.abort();
+      window.clearInterval(interval);
+    };
+  }, [
+    backendEnabled,
+    drag,
+    editorBusy,
+    editorNodeId,
+    movingId,
+    resize,
+    updatingRoadmapTaskId,
+  ]);
 
   async function persistNodeMove(
     node: DocumentationNode,
@@ -1162,6 +1247,10 @@ export function SushicodeWorkspace({
   const openTracker = openTimelineId?.startsWith("tracker-")
     ? trackerItems.find((item) => `tracker-${item.id}` === openTimelineId) ?? null
     : null;
+  const mcpUrl =
+    typeof window === "undefined"
+      ? "https://YOUR-VERCEL-DOMAIN/api/mcp"
+      : `${window.location.origin}/api/mcp`;
   return (
     <main className="workspace-shell">
       <span className="sr-only">sushicode is code</span>
@@ -1180,9 +1269,22 @@ export function SushicodeWorkspace({
         </div>
         <div className="topbar-center">
           <span className="live-dot" />
-          IA synced now
+          {lastSyncedAt
+            ? `Docs + roadmap synced ${lastSyncedAt.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}`
+            : "Docs + roadmap live"}
         </div>
         <div className="topbar-actions">
+          <button
+            className="mcp-connect-button"
+            onClick={() => setShowMcpSetup(true)}
+            type="button"
+          >
+            Connect MCP
+          </button>
           <button
             aria-label={hideLeft ? "Show timeline" : "Hide timeline"}
             className={hideLeft ? "icon-button active" : "icon-button"}
@@ -1756,6 +1858,80 @@ export function SushicodeWorkspace({
             </>
           )}
         </aside>
+      ) : null}
+
+      {showMcpSetup ? (
+        <div className="wireframe-editor-backdrop" role="presentation">
+          <section
+            aria-label="Connect an agent with MCP"
+            aria-modal="true"
+            className="mcp-setup"
+            role="dialog"
+          >
+            <header className="wireframe-editor-header">
+              <div>
+                <span className="eyebrow">Agent access</span>
+                <strong>Connect Sushicode MCP</strong>
+              </div>
+              <button
+                aria-label="Close MCP setup"
+                className="icon-button"
+                onClick={() => setShowMcpSetup(false)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="mcp-setup-body">
+              <p>
+                This remote MCP lets agents read and edit documentation and roadmap
+                tasks. Writes use optimistic lock versions to prevent accidental
+                overwrites.
+              </p>
+              <ol>
+                <li>Add a secret named <code>MCP_API_KEY</code> in Vercel.</li>
+                <li>Redeploy, then add this server in Cursor’s MCP settings.</li>
+                <li>Replace <code>YOUR_MCP_API_KEY</code> with the same secret.</li>
+              </ol>
+              <label>
+                Remote server URL
+                <div className="mcp-copy-row">
+                  <code>{mcpUrl}</code>
+                  <button
+                    onClick={() => {
+                      void navigator.clipboard.writeText(mcpUrl);
+                      setToast("MCP URL copied");
+                    }}
+                    type="button"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </label>
+              <label>
+                Cursor <code>mcp.json</code>
+                <pre>{JSON.stringify(
+                  {
+                    mcpServers: {
+                      sushicode: {
+                        url: mcpUrl,
+                        headers: {
+                          Authorization: "Bearer YOUR_MCP_API_KEY",
+                        },
+                      },
+                    },
+                  },
+                  null,
+                  2,
+                )}</pre>
+              </label>
+              <p className="mcp-security-note">
+                Treat this key like a password: connected agents can modify project
+                content.
+              </p>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {editorNode ? (

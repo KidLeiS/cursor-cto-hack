@@ -1180,6 +1180,24 @@ a.button-quiet:hover {
   gap: 6px;
 }
 
+.mcp-connect-button {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(200, 255, 102, 0.24);
+  border-radius: 5px;
+  background: rgba(200, 255, 102, 0.06);
+  color: var(--workspace-green);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mcp-connect-button:hover {
+  border-color: rgba(200, 255, 102, 0.5);
+  background: rgba(200, 255, 102, 0.1);
+}
+
 .icon-button {
   display: grid;
   width: 30px;
@@ -2586,6 +2604,96 @@ a.button-quiet:hover {
   border-radius: 9px;
   background: #171a18;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+}
+
+.mcp-setup {
+  width: min(640px, calc(100vw - 56px));
+  max-height: calc(100vh - 56px);
+  overflow: hidden auto;
+  border: 1px solid var(--workspace-line-strong);
+  border-radius: 9px;
+  background: #171a18;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+}
+
+.mcp-setup-body {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.mcp-setup-body > p,
+.mcp-setup-body ol {
+  margin: 0;
+  color: var(--workspace-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.mcp-setup-body ol {
+  padding-left: 19px;
+}
+
+.mcp-setup-body label {
+  display: grid;
+  gap: 7px;
+  color: var(--workspace-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.mcp-setup-body code,
+.mcp-setup-body pre {
+  font-family: var(--font-mono);
+  text-transform: none;
+}
+
+.mcp-setup-body pre {
+  max-height: 230px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 5px;
+  background: #101311;
+  color: #ced5d0;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.mcp-copy-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-copy-row code {
+  flex: 1;
+  overflow: hidden;
+  padding: 9px 10px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 5px;
+  background: #101311;
+  color: var(--workspace-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-copy-row button {
+  padding: 8px 10px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--workspace-green);
+}
+
+.mcp-setup-body .mcp-security-note {
+  padding-top: 10px;
+  border-top: 1px solid var(--workspace-line);
+  color: #c79b75;
+  font-size: 9px;
 }
 
 .wireframe-editor-header,
