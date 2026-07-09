@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -11,12 +12,18 @@ import {
   type WheelEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import { MarkdownEditor } from "@/components/docs/MarkdownEditor";
 import {
   createDocumentationNode,
   deleteDocumentationNode,
   moveDocumentationNode,
+  updateDocumentationContent,
   uploadDocumentationImage,
 } from "@/lib/documentation-actions";
+import {
+  persistDocumentationAssetUrls,
+  resolveDocumentationAssetUrls,
+} from "@/lib/documentation-markdown";
 import type { DashboardBundle } from "@/lib/data";
 import {
   buildRoadmapTree,
@@ -27,6 +34,7 @@ import {
 } from "@/lib/roadmap";
 import { formatTaskTrackerDate } from "@/lib/task-tracker-calendar";
 import type {
+  DocumentationAsset,
   DocumentationNode,
   RoadmapTask,
   TaskTrackerItem,
@@ -41,6 +49,8 @@ type WorkspaceProps = {
 };
 
 type Point = { x: number; y: number };
+type NodeSize = { width: number; height: number };
+type WorkspaceAsset = DocumentationAsset & { signed_url: string };
 type Granularity = "hours" | "days" | "weeks";
 type TimelineItem = {
   id: string;
@@ -347,6 +357,13 @@ function initialPositions(nodes: DocumentationNode[]): Record<string, Point> {
   return result;
 }
 
+function nodeSize(node: DocumentationNode): NodeSize {
+  return {
+    width: node.canvas_width ?? NODE_WIDTH,
+    height: node.canvas_height ?? NODE_HEIGHT,
+  };
+}
+
 function trackerTimelineItem(item: TaskTrackerItem): TimelineItem {
   return {
     id: `tracker-${item.id}`,
@@ -443,6 +460,12 @@ export function SushicodeWorkspace({
     pointerY: number;
     origin: Point;
   } | null>(null);
+  const [resize, setResize] = useState<{
+    id: string;
+    pointerX: number;
+    pointerY: number;
+    origin: NodeSize;
+  } | null>(null);
   const [panDrag, setPanDrag] = useState<{
     pointerX: number;
     pointerY: number;
@@ -450,6 +473,12 @@ export function SushicodeWorkspace({
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
+  const [editorNodeId, setEditorNodeId] = useState<string | null>(null);
+  const [editorTitle, setEditorTitle] = useState("");
+  const [editorSlug, setEditorSlug] = useState("");
+  const [editorMarkdown, setEditorMarkdown] = useState("");
+  const [editorAssets, setEditorAssets] = useState<WorkspaceAsset[]>([]);
+  const [editorBusy, setEditorBusy] = useState(false);
 
   const [granularity, setGranularity] = useState<Granularity>("hours");
   const [priorityMode, setPriorityMode] = useState(false);
@@ -494,6 +523,7 @@ export function SushicodeWorkspace({
 
   const visibleNodes = nodes.filter((node) => visibleIds.has(node.id));
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
+  const editorNode = nodes.find((node) => node.id === editorNodeId) ?? null;
   const today = localIsoDate();
   const orderedTimeline = [...timeline].sort((a, b) =>
     priorityMode ? b.priority - a.priority : timeline.indexOf(a) - timeline.indexOf(b),
@@ -508,8 +538,42 @@ export function SushicodeWorkspace({
     ? findRoadmapNode(roadmapTree.roots, activeRoadmapTaskId)
     : null;
 
-  async function persistNodeMove(node: DocumentationNode, point: Point, parentId = node.parent_id) {
-    if (!backendEnabled || node.id.startsWith("demo-")) return;
+  useEffect(() => {
+    if (!editorNode) {
+      setEditorAssets([]);
+      return;
+    }
+    setEditorTitle(editorNode.title);
+    setEditorSlug(editorNode.slug);
+    setEditorMarkdown(resolveDocumentationAssetUrls(editorNode.markdown));
+
+    if (!backendEnabled || editorNode.id.startsWith("demo-")) {
+      setEditorAssets([]);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/docs/${editorNode.id}`, { signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.ok && !controller.signal.aborted) {
+          setEditorAssets(
+            (result.assets as WorkspaceAsset[]).filter((asset) => !asset.archived_at),
+          );
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setToast("Could not load document images");
+      });
+    return () => controller.abort();
+  }, [backendEnabled, editorNode?.id, editorNode?.content_version]);
+
+  async function persistNodeMove(
+    node: DocumentationNode,
+    point: Point,
+    parentId = node.parent_id,
+    size = nodeSize(node),
+  ): Promise<boolean> {
+    if (!backendEnabled || node.id.startsWith("demo-")) return true;
     const result = await moveDocumentationNode({
       id: node.id,
       expected_lock_version: node.lock_version,
@@ -517,13 +581,13 @@ export function SushicodeWorkspace({
       sort_order: node.sort_order,
       canvas_x: point.x,
       canvas_y: point.y,
-      canvas_width: node.canvas_width,
-      canvas_height: node.canvas_height,
+      canvas_width: size.width,
+      canvas_height: size.height,
       canvas_metadata: node.canvas_metadata,
     });
     if (!result.ok) {
       setToast(result.error);
-      return;
+      return false;
     }
     if (result.data) {
       setNodes((current) =>
@@ -531,6 +595,7 @@ export function SushicodeWorkspace({
       );
     }
     setToast("Canvas position synced");
+    return true;
   }
 
   function selectNode(node: DocumentationNode) {
@@ -543,8 +608,17 @@ export function SushicodeWorkspace({
           ),
         );
         setExpanded((current) => new Set(current).add(node.id));
-        void persistNodeMove(moving, positions[moving.id], node.id);
-        setToast(`Moved “${moving.title}” into “${node.title}”`);
+        void persistNodeMove(moving, positions[moving.id], node.id).then((saved) => {
+          if (!saved) {
+            setNodes((current) =>
+              current.map((item) =>
+                item.id === moving.id ? { ...item, parent_id: moving.parent_id } : item,
+              ),
+            );
+            return;
+          }
+          setToast(`Moved “${moving.title}” into “${node.title}”`);
+        });
       }
       setMovingId(null);
       return;
@@ -568,7 +642,7 @@ export function SushicodeWorkspace({
     event: ReactPointerEvent<HTMLDivElement>,
     node: DocumentationNode,
   ) {
-    if ((event.target as HTMLElement).closest("button")) return;
+    if ((event.target as HTMLElement).closest("button, .node-resize-handle")) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     setDrag({
@@ -597,7 +671,13 @@ export function SushicodeWorkspace({
     const node = nodes.find((item) => item.id === drag.id);
     setPositions((current) => ({ ...current, [drag.id]: next }));
     setDrag(null);
-    if (node) void persistNodeMove(node, next);
+    if (node) {
+      void persistNodeMove(node, next).then((saved) => {
+        if (!saved) {
+          setPositions((current) => ({ ...current, [node.id]: drag.origin }));
+        }
+      });
+    }
   }
 
   function handleCanvasPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -607,6 +687,68 @@ export function SushicodeWorkspace({
       pointerX: event.clientX,
       pointerY: event.clientY,
       origin: pan,
+    });
+  }
+
+  function handleResizePointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    node: DocumentationNode,
+  ) {
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResize({
+      id: node.id,
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      origin: nodeSize(node),
+    });
+  }
+
+  function handleResizePointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!resize || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const size = {
+      width: Math.max(220, Math.round(resize.origin.width + (event.clientX - resize.pointerX) / zoom)),
+      height: Math.max(120, Math.round(resize.origin.height + (event.clientY - resize.pointerY) / zoom)),
+    };
+    setNodes((current) =>
+      current.map((node) =>
+        node.id === resize.id
+          ? { ...node, canvas_width: size.width, canvas_height: size.height }
+          : node,
+      ),
+    );
+  }
+
+  function handleResizePointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!resize) return;
+    const original = resize.origin;
+    const node = nodes.find((item) => item.id === resize.id);
+    const size = {
+      width: Math.max(220, Math.round(original.width + (event.clientX - resize.pointerX) / zoom)),
+      height: Math.max(120, Math.round(original.height + (event.clientY - resize.pointerY) / zoom)),
+    };
+    setResize(null);
+    if (!node) return;
+    const updated = { ...node, canvas_width: size.width, canvas_height: size.height };
+    setNodes((current) =>
+      current.map((item) => (item.id === node.id ? updated : item)),
+    );
+    void persistNodeMove(updated, positions[node.id], node.parent_id, size).then((saved) => {
+      if (!saved) {
+        setNodes((current) =>
+          current.map((item) =>
+            item.id === node.id
+              ? {
+                  ...item,
+                  canvas_width: original.width,
+                  canvas_height: original.height,
+                }
+              : item,
+          ),
+        );
+      } else {
+        setToast("Node size synced");
+      }
     });
   }
 
@@ -674,7 +816,14 @@ export function SushicodeWorkspace({
         setToast(result.error);
         return;
       }
-      if (result.data) draft.id = result.data.id;
+      if (result.data) {
+        setNodes((current) => [...current, result.data!]);
+        setPositions((current) => ({ ...current, [result.data!.id]: point }));
+        if (parent) setExpanded((current) => new Set(current).add(parent.id));
+        setSelectedId(result.data.id);
+        setToast("New note added");
+        return;
+      }
     }
     setNodes((current) => [...current, draft]);
     setPositions((current) => ({ ...current, [draft.id]: point }));
@@ -718,8 +867,85 @@ export function SushicodeWorkspace({
     data.set("node_id", selectedNode.id);
     data.set("file", file);
     const result = await uploadDocumentationImage(data);
-    setToast(result.ok ? `${file.name} uploaded` : result.error);
+    if (!result.ok || !result.data) {
+      setToast(result.ok ? "Image upload did not return an asset." : result.error);
+      event.target.value = "";
+      return;
+    }
+
+    const updated = await updateDocumentationContent({
+      id: selectedNode.id,
+      expected_lock_version: selectedNode.lock_version,
+      slug: selectedNode.slug,
+      title: selectedNode.title,
+      markdown: `${selectedNode.markdown.trimEnd()}\n\n${result.data.markdown}`,
+    });
+    if (!updated.ok || !updated.data) {
+      setToast(updated.ok ? "Image uploaded but could not be attached to the note." : updated.error);
+      event.target.value = "";
+      return;
+    }
+    setNodes((current) =>
+      current.map((node) => (node.id === updated.data!.id ? updated.data! : node)),
+    );
+    setToast(`${file.name} uploaded and attached to ${selectedNode.title}`);
     event.target.value = "";
+  }
+
+  async function saveEditor() {
+    if (!editorNode) return;
+    if (!editorTitle.trim() || !editorSlug.trim()) {
+      setToast("Title and slug are required");
+      return;
+    }
+    if (!backendEnabled || editorNode.id.startsWith("demo-")) {
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === editorNode.id
+            ? {
+                ...node,
+                title: editorTitle.trim(),
+                slug: slugify(editorSlug),
+                markdown: persistDocumentationAssetUrls(editorMarkdown),
+              }
+            : node,
+        ),
+      );
+      setEditorNodeId(null);
+      setToast("Demo note updated locally");
+      return;
+    }
+
+    setEditorBusy(true);
+    const result = await updateDocumentationContent({
+      id: editorNode.id,
+      expected_lock_version: editorNode.lock_version,
+      title: editorTitle.trim(),
+      slug: slugify(editorSlug),
+      markdown: persistDocumentationAssetUrls(editorMarkdown),
+    });
+    setEditorBusy(false);
+    if (!result.ok || !result.data) {
+      setToast(result.ok ? "Document save returned no data" : result.error);
+      return;
+    }
+    setNodes((current) =>
+      current.map((node) => (node.id === result.data!.id ? result.data! : node)),
+    );
+    setEditorNodeId(null);
+    setToast("Document saved");
+  }
+
+  async function archiveEditorAsset(asset: WorkspaceAsset) {
+    if (!window.confirm(`Archive “${asset.original_filename}”?`)) return;
+    const response = await fetch(`/api/docs/assets/${asset.id}`, { method: "DELETE" });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      setToast(result.error || "Could not archive image");
+      return;
+    }
+    setEditorAssets((current) => current.filter((item) => item.id !== asset.id));
+    setToast("Image archived");
   }
 
   async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
@@ -1000,10 +1226,14 @@ export function SushicodeWorkspace({
               const parent = positions[node.parent_id];
               const child = positions[node.id];
               if (!parent || !child) return null;
-              const startX = parent.x + NODE_WIDTH;
-              const startY = parent.y + NODE_HEIGHT / 2;
+              const parentNode = nodes.find((item) => item.id === node.parent_id);
+              if (!parentNode) return null;
+              const parentSize = nodeSize(parentNode);
+              const childSize = nodeSize(node);
+              const startX = parent.x + parentSize.width;
+              const startY = parent.y + parentSize.height / 2;
               const endX = child.x;
-              const endY = child.y + NODE_HEIGHT / 2;
+              const endY = child.y + childSize.height / 2;
               const bend = Math.max(72, (endX - startX) * 0.5);
               return (
                 <path
@@ -1035,7 +1265,12 @@ export function SushicodeWorkspace({
                 onPointerDown={(event) => handleNodePointerDown(event, node)}
                 onPointerMove={handleNodePointerMove}
                 onPointerUp={handleNodePointerUp}
-                style={{ left: positions[node.id]?.x ?? 0, top: positions[node.id]?.y ?? 0 }}
+                style={{
+                  left: positions[node.id]?.x ?? 0,
+                  top: positions[node.id]?.y ?? 0,
+                  width: nodeSize(node).width,
+                  height: nodeSize(node).height,
+                }}
               >
                 {childCount ? <div className="folder-tab" /> : null}
                 <div className="node-header">
@@ -1074,6 +1309,16 @@ export function SushicodeWorkspace({
                     <span>README.md</span>
                   )}
                 </div>
+                {isSelected ? (
+                  <button
+                    aria-label="Resize node"
+                    className="node-resize-handle"
+                    onPointerDown={(event) => handleResizePointerDown(event, node)}
+                    onPointerMove={handleResizePointerMove}
+                    onPointerUp={handleResizePointerUp}
+                    type="button"
+                  />
+                ) : null}
               </div>
             );
           })}
@@ -1513,6 +1758,98 @@ export function SushicodeWorkspace({
         </aside>
       ) : null}
 
+      {editorNode ? (
+        <div className="wireframe-editor-backdrop" role="presentation">
+          <section
+            aria-label={`Edit ${editorNode.title}`}
+            aria-modal="true"
+            className="wireframe-editor"
+            role="dialog"
+          >
+            <header className="wireframe-editor-header">
+              <div>
+                <span className="eyebrow">Documentation</span>
+                <strong>Edit note</strong>
+              </div>
+              <button
+                aria-label="Close editor"
+                className="icon-button"
+                onClick={() => setEditorNodeId(null)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="wireframe-editor-fields">
+              <label>
+                Title
+                <input
+                  maxLength={160}
+                  onChange={(event) => setEditorTitle(event.target.value)}
+                  value={editorTitle}
+                />
+              </label>
+              <label>
+                Slug
+                <input
+                  onChange={(event) => setEditorSlug(event.target.value)}
+                  value={editorSlug}
+                />
+              </label>
+            </div>
+            <div className="wireframe-markdown-editor">
+              <MarkdownEditor
+                markdown={editorMarkdown}
+                nodeId={editorNode.id}
+                onAssetUploaded={(asset) =>
+                  setEditorAssets((current) => [...current, asset])
+                }
+                onChange={setEditorMarkdown}
+              />
+            </div>
+            <div className="wireframe-assets">
+              <div className="wireframe-assets-heading">
+                <span>Images ({editorAssets.length})</span>
+                <button onClick={() => uploadRef.current?.click()} type="button">
+                  <Icon name="upload" size={13} /> Upload
+                </button>
+              </div>
+              {editorAssets.length ? (
+                <div className="wireframe-asset-grid">
+                  {editorAssets.map((asset) => (
+                    <figure key={asset.id}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img alt={asset.alt_text ?? asset.original_filename} src={asset.signed_url} />
+                      <figcaption>
+                        <span>{asset.original_filename}</span>
+                        <button
+                          aria-label={`Archive ${asset.original_filename}`}
+                          onClick={() => void archiveEditorAsset(asset)}
+                          type="button"
+                        >
+                          <Icon name="trash" size={12} />
+                        </button>
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : (
+                <p>No images attached.</p>
+              )}
+            </div>
+            <footer className="wireframe-editor-footer">
+              <span>v{editorNode.content_version}</span>
+              <button className="button-quiet" onClick={() => setEditorNodeId(null)} type="button">
+                Cancel
+              </button>
+              <button disabled={editorBusy} onClick={() => void saveEditor()} type="button">
+                {editorBusy ? "Saving…" : "Save"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
       {selectedNode ? (
         <div className="selection-toolbar">
           <div className="selection-title">
@@ -1527,6 +1864,9 @@ export function SushicodeWorkspace({
             </span>
           </div>
           <span className="toolbar-divider" />
+          <button onClick={() => setEditorNodeId(selectedNode.id)} type="button">
+            <Icon name="note" /> Edit
+          </button>
           <button onClick={() => void addChild()} type="button">
             <Icon name="plus" /> New note
           </button>

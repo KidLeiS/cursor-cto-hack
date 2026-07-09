@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { DocumentationNode } from "../../shared/types";
 import { buildDocumentationTree } from "../src/lib/documentation";
-import { resolveDocumentationAssetUrls } from "../src/lib/documentation-markdown";
+import {
+  persistDocumentationAssetUrls,
+  resolveDocumentationAssetUrls,
+} from "../src/lib/documentation-markdown";
 import { createNodeSchema, updateNodeSchema } from "../src/lib/documentation-api";
 
 const now = "2026-07-09T00:00:00.000Z";
@@ -80,6 +83,16 @@ describe("resolveDocumentationAssetUrls", () => {
     assert.equal(
       resolveDocumentationAssetUrls(`![map](asset:${id})\n\n![remote](https://example.com/a.png)`),
       `![map](/api/docs/assets/${id}/content)\n\n![remote](https://example.com/a.png)`,
+    );
+  });
+
+  it("converts editor routes back to durable asset tokens", () => {
+    const id = "10000000-0000-4000-8000-000000000001";
+    assert.equal(
+      persistDocumentationAssetUrls(
+        `![map](/api/docs/assets/${id}/content)\n\n![remote](https://example.com/a.png)`,
+      ),
+      `![map](asset:${id})\n\n![remote](https://example.com/a.png)`,
     );
   });
 });
