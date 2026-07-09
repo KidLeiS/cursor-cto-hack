@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="sushicode mark">
+  <title>sushicode mark</title>
+  <rect width="64" height="64" rx="14" fill="#0f1412"/>
+  <!-- rice base -->
+  <rect x="12" y="34" width="40" height="16" rx="8" fill="#e8f0ea"/>
+  <!-- topping (wasabi) -->
+  <rect x="14" y="22" width="36" height="14" rx="7" fill="#c4f082"/>
+  <!-- code caret cut into the topping -->
+  <path d="M27 26.5 L23 29 L27 31.5" stroke="#14200f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M37 26.5 L41 29 L37 31.5" stroke="#14200f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
