@@ -47,5 +47,53 @@ export const actionTaskTrackerItemSchema = z
   })
   .strict();
 
+const mutationFields = {
+  expected_lock_version: z.number().int().positive(),
+  scheduled_for: calendarDateSchema,
+  due_on: calendarDateSchema.nullable(),
+};
+
+export const updateTaskTrackerItemSchema = z
+  .discriminatedUnion("operation", [
+    z
+      .object({
+        operation: z.literal("edit"),
+        ...mutationFields,
+        title: z.string().trim().min(1).max(200),
+        description: z.string().trim().min(1).max(4000),
+        priority: z.enum(["urgent", "high", "medium", "low"]),
+        estimate_minutes: z.number().int().positive().max(525600).nullable(),
+      })
+      .strict(),
+    z
+      .object({
+        operation: z.literal("reschedule"),
+        ...mutationFields,
+      })
+      .strict(),
+    z
+      .object({
+        operation: z.literal("complete"),
+        expected_lock_version: z.number().int().positive(),
+      })
+      .strict(),
+  ])
+  .refine(
+    (input) =>
+      input.operation === "complete" ||
+      input.due_on === null ||
+      input.due_on >= input.scheduled_for,
+    { message: "due_on cannot be before scheduled_for", path: ["due_on"] },
+  );
+
+export const deleteTaskTrackerItemSchema = z
+  .object({
+    expected_lock_version: z.number().int().positive(),
+  })
+  .strict();
+
 export type TaskTrackerLlmItem = z.infer<typeof taskTrackerLlmItemSchema>;
 export type TaskTrackerLlmOutput = z.infer<typeof taskTrackerLlmOutputSchema>;
+export type UpdateTaskTrackerItemInput = z.infer<
+  typeof updateTaskTrackerItemSchema
+>;

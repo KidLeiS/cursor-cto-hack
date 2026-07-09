@@ -46,6 +46,7 @@ export function demoTaskTrackerBundle(): TaskTrackerBundle {
     action_error: null,
     lock_version: 1,
     actioned_at: null,
+    completed_at: null,
     created_at: now,
     updated_at: now,
   } as const;

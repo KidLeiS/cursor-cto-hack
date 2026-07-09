@@ -46,6 +46,7 @@ export type TaskTrackerStatus =
   | "pending"
   | "actioning"
   | "actioned"
+  | "completed"
   | "failed"
   | "cancelled";
 
@@ -215,6 +216,7 @@ export interface TaskTrackerItem {
   action_error: string | null;
   lock_version: number;
   actioned_at: string | null;
+  completed_at: string | null;
   created_at: string;
   updated_at: string;
 }
