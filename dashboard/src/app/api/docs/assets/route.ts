@@ -3,6 +3,7 @@ import { actionStatus, apiJson, apiOptions } from "@/lib/documentation-api";
 import { documentationIdSchema } from "@/lib/documentation-api";
 import { loadDocumentationNodes } from "@/lib/documentation";
 import { loadDocumentationProject } from "@/lib/documentation-project";
+import { requireApiUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const OPTIONS = apiOptions;
@@ -27,6 +28,8 @@ async function hasValidImageSignature(file: File): Promise<boolean> {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > 11 * 1024 * 1024) {
     return apiJson({ ok: false, error: "Upload is larger than 10 MB." }, 413);

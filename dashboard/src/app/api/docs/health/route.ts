@@ -1,11 +1,14 @@
 import { apiJson, apiOptions } from "@/lib/documentation-api";
 import { getSupabase } from "@/lib/data";
+import { requireApiUser } from "@/lib/auth";
 import { loadDocumentationProject } from "@/lib/documentation-project";
 
 export const dynamic = "force-dynamic";
 export const OPTIONS = apiOptions;
 
 export async function GET() {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const project = await loadDocumentationProject();
   if (!project) {
     return apiJson({

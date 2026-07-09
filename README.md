@@ -53,7 +53,7 @@ Configure the server in Cursor:
     "sushicode": {
       "url": "https://YOUR-VERCEL-DOMAIN/api/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_MCP_API_KEY",
+        "Authorization": "Bearer YOUR_PERSONAL_MCP_KEY",
         "MCP-Protocol-Version": "2025-11-25"
       }
     }
@@ -63,7 +63,9 @@ Configure the server in Cursor:
 
 Cursor iOS selects MCP servers configured for Cloud Agents; add the remote
 server at [cursor.com/agents](https://cursor.com/agents) first, then enable it
-for the mobile run. Do not commit a real key.
+for the mobile run. Generate a personal key from **Connect MCP** after signing
+in. Keys are shown once, stored as hashes, and can be revoked. Do not commit a
+real key.
 
 See [the remote MCP guide](docs/remote-mcp.md) for Vercel setup, Cursor setup,
 curl verification, and security notes.
@@ -83,8 +85,10 @@ real project, set these in `dashboard/.env.local`:
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+SB_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_SERVICE_ROLE_KEY
 NEXT_PUBLIC_PROJECT_SLUG=cursor-cto-hack
-MCP_API_KEY=YOUR_LOCAL_MCP_SECRET
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+AUTH_RATE_LIMIT_SECRET=YOUR_RANDOM_SERVER_SECRET
 ```
 
 ## Deploy with Vercel
@@ -99,15 +103,22 @@ MCP_API_KEY=YOUR_LOCAL_MCP_SECRET
 | --- | --- |
 | `SB_URL` | Supabase project URL |
 | `SB_PK` | Supabase anon key |
+| `SB_SERVICE_ROLE_KEY` | Server-only key used after application authorization |
 | `NEXT_PUBLIC_PROJECT_SLUG` | Project slug; normally `cursor-cto-hack` |
+| `NEXT_PUBLIC_SITE_URL` | Canonical URL for magic-link callbacks |
+| `AUTH_RATE_LIMIT_SECRET` | Server-only pepper for login request throttling |
 | `DS_API` | Server-side DeepSeek key for the task tracker |
 | `DEEPSEEK_MODEL` | Optional; defaults to `deepseek-chat` |
 | `CF_ACC` | Cloudflare account ID for Workers AI transcription |
 | `CF_API` | Cloudflare token for Workers AI transcription |
-| `MCP_API_KEY` | Server-only secret for remote MCP access |
 
-Never prefix `DS_API`, `CF_API`, or `MCP_API_KEY` with `NEXT_PUBLIC_`. Changes
-to Vercel environment variables require a redeploy.
+Never prefix `DS_API`, `CF_API`, `SB_SERVICE_ROLE_KEY`, or
+`AUTH_RATE_LIMIT_SECRET` with `NEXT_PUBLIC_`. Changes to Vercel environment
+variables require a redeploy.
+
+Access is waitlist-only. Supabase Auth and database RLS currently permit only
+`eric@aimalcolm.com`; all other submitted addresses become pending waitlist
+entries.
 
 ## Verify
 

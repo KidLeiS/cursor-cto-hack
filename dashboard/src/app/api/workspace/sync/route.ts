@@ -4,15 +4,17 @@ import { getSupabase } from "@/lib/data";
 import { loadDocumentationNodes } from "@/lib/documentation";
 import { loadDocumentationProject } from "@/lib/documentation-project";
 import { loadRoadmapBundle } from "@/lib/roadmap";
+import { requireApiUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 const headers = {
   "Cache-Control": "no-store, max-age=0",
-  "Access-Control-Allow-Origin": "*",
 };
 
 export async function GET(request: Request) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const supabase = getSupabase();
   const project = await loadDocumentationProject();
   if (!supabase || !project) {

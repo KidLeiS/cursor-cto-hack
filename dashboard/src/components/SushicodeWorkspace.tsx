@@ -52,6 +52,14 @@ type WorkspaceProps = {
 type Point = { x: number; y: number };
 type NodeSize = { width: number; height: number };
 type WorkspaceAsset = DocumentationAsset & { signed_url: string };
+type McpKeyRecord = {
+  id: string;
+  name: string;
+  key_prefix: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
 type Granularity = "hours" | "days" | "weeks";
 type NotesTab = "overview" | "hours" | "days" | "time";
 type LeftPanelMode = "chat" | "notes";
@@ -643,6 +651,10 @@ export function SushicodeWorkspace({
   const [editorAssets, setEditorAssets] = useState<WorkspaceAsset[]>([]);
   const [editorBusy, setEditorBusy] = useState(false);
   const [showMcpSetup, setShowMcpSetup] = useState(false);
+  const [mcpKeys, setMcpKeys] = useState<McpKeyRecord[]>([]);
+  const [mcpKeyName, setMcpKeyName] = useState("Cursor");
+  const [newMcpKey, setNewMcpKey] = useState<string | null>(null);
+  const [mcpKeyBusy, setMcpKeyBusy] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const syncEtag = useRef("");
 
@@ -1886,6 +1898,48 @@ export function SushicodeWorkspace({
   useEffect(() => {
     setTrackerEditDraft(openTracker ? taskDraftFrom(openTracker) : null);
   }, [openTracker?.id, openTracker?.lock_version]);
+
+  useEffect(() => {
+    if (!showMcpSetup) return;
+    setNewMcpKey(null);
+    void fetch("/api/mcp/keys")
+      .then((response) => response.json())
+      .then((result) => {
+        if (result.ok) setMcpKeys(result.data as McpKeyRecord[]);
+      });
+  }, [showMcpSetup]);
+
+  async function createPersonalMcpKey() {
+    setMcpKeyBusy(true);
+    const response = await fetch("/api/mcp/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: mcpKeyName }),
+    });
+    const result = await response.json();
+    setMcpKeyBusy(false);
+    if (!response.ok || !result.ok) {
+      setToast(result.error || "Unable to create MCP key");
+      return;
+    }
+    setNewMcpKey(result.data.key as string);
+    setMcpKeys((current) => [result.data as McpKeyRecord, ...current]);
+  }
+
+  async function revokePersonalMcpKey(id: string) {
+    const response = await fetch(`/api/mcp/keys/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      setToast("Unable to revoke MCP key");
+      return;
+    }
+    setMcpKeys((current) =>
+      current.map((key) =>
+        key.id === id ? { ...key, revoked_at: new Date().toISOString() } : key,
+      ),
+    );
+    setToast("MCP key revoked");
+  }
+
   const mcpUrl =
     typeof window === "undefined"
       ? "https://YOUR-VERCEL-DOMAIN/api/mcp"
@@ -1940,7 +1994,11 @@ export function SushicodeWorkspace({
           >
             <Icon name="hide-right" />
           </button>
-          <div className="avatar">KL</div>
+          <form action="/auth/logout" method="post">
+            <button className="avatar" title="Sign out" type="submit">
+              EA
+            </button>
+          </form>
         </div>
       </header>
 
@@ -3282,11 +3340,62 @@ export function SushicodeWorkspace({
                 tasks. Writes use optimistic lock versions to prevent accidental
                 overwrites.
               </p>
-              <ol>
-                <li>Add a secret named <code>MCP_API_KEY</code> in Vercel.</li>
-                <li>Redeploy, then add this server in Cursor’s MCP settings.</li>
-                <li>Replace <code>YOUR_MCP_API_KEY</code> with the same secret.</li>
-              </ol>
+              <label>
+                Create a personal key
+                <div className="mcp-copy-row">
+                  <input
+                    maxLength={80}
+                    onChange={(event) => setMcpKeyName(event.target.value)}
+                    value={mcpKeyName}
+                  />
+                  <button
+                    disabled={mcpKeyBusy}
+                    onClick={() => void createPersonalMcpKey()}
+                    type="button"
+                  >
+                    {mcpKeyBusy ? "Creating…" : "Create"}
+                  </button>
+                </div>
+              </label>
+              {newMcpKey ? (
+                <label>
+                  Copy now—this key will not be shown again
+                  <div className="mcp-copy-row">
+                    <code>{newMcpKey}</code>
+                    <button
+                      onClick={() => {
+                        void navigator.clipboard.writeText(newMcpKey);
+                        setToast("Personal MCP key copied");
+                      }}
+                      type="button"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </label>
+              ) : null}
+              {mcpKeys.length ? (
+                <div className="mcp-key-list">
+                  {mcpKeys.map((key) => (
+                    <div key={key.id}>
+                      <span>
+                        <strong>{key.name}</strong>
+                        <small>{key.key_prefix}••••••••</small>
+                      </span>
+                      {key.revoked_at ? (
+                        <em>Revoked</em>
+                      ) : (
+                        <button
+                          onClick={() => void revokePersonalMcpKey(key.id)}
+                          type="button"
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <label>
                 Remote server URL
                 <div className="mcp-copy-row">
@@ -3310,7 +3419,7 @@ export function SushicodeWorkspace({
                       sushicode: {
                         url: mcpUrl,
                         headers: {
-                          Authorization: "Bearer YOUR_MCP_API_KEY",
+                          Authorization: `Bearer ${newMcpKey ?? "YOUR_PERSONAL_MCP_KEY"}`,
                           "MCP-Protocol-Version": "2025-11-25",
                         },
                       },
@@ -3321,8 +3430,8 @@ export function SushicodeWorkspace({
                 )}</pre>
               </label>
               <p className="mcp-security-note">
-                Treat this key like a password: connected agents can modify project
-                content.
+                Keys are stored as one-way hashes and can be revoked immediately.
+                Treat the one-time value like a password.
               </p>
             </div>
           </section>

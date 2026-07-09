@@ -8,6 +8,10 @@ import type {
   DocumentationNode,
 } from "../../../shared/types";
 import { getSupabase } from "./data";
+import {
+  authorizeMutation,
+  SERVICE_AUTHORIZATION,
+} from "./service-authorization";
 
 type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -59,7 +63,9 @@ export type CreateDocumentationNodeInput = {
 
 export async function createDocumentationNode(
   input: CreateDocumentationNodeInput,
+  authorization?: typeof SERVICE_AUTHORIZATION,
 ): Promise<ActionResult<DocumentationNode>> {
+  await authorizeMutation(authorization);
   const invalid = validateIdentity(input.title, input.slug);
   if (invalid) return { ok: false, code: "invalid", error: invalid };
 
@@ -99,7 +105,9 @@ export type UpdateDocumentationContentInput = {
 
 export async function updateDocumentationContent(
   input: UpdateDocumentationContentInput,
+  authorization?: typeof SERVICE_AUTHORIZATION,
 ): Promise<ActionResult<DocumentationNode>> {
+  await authorizeMutation(authorization);
   const invalid = validateIdentity(input.title, input.slug);
   if (invalid) return { ok: false, code: "invalid", error: invalid };
 
@@ -142,7 +150,9 @@ export type MoveDocumentationNodeInput = {
 
 export async function moveDocumentationNode(
   input: MoveDocumentationNodeInput,
+  authorization?: typeof SERVICE_AUTHORIZATION,
 ): Promise<ActionResult<DocumentationNode>> {
+  await authorizeMutation(authorization);
   const values = [
     input.sort_order,
     input.canvas_x,
@@ -187,7 +197,8 @@ export async function restoreDocumentationRevision(input: {
   node_id: string;
   content_version: number;
   expected_lock_version: number;
-}): Promise<ActionResult<DocumentationNode>> {
+}, authorization?: typeof SERVICE_AUTHORIZATION): Promise<ActionResult<DocumentationNode>> {
+  await authorizeMutation(authorization);
   const supabase = getSupabase();
   if (!supabase) return notConfigured();
 
@@ -214,7 +225,8 @@ export async function restoreDocumentationRevision(input: {
 export async function deleteDocumentationNode(input: {
   id: string;
   expected_lock_version: number;
-}): Promise<ActionResult> {
+}, authorization?: typeof SERVICE_AUTHORIZATION): Promise<ActionResult> {
+  await authorizeMutation(authorization);
   const supabase = getSupabase();
   if (!supabase) return notConfigured();
 
@@ -237,7 +249,9 @@ export async function deleteDocumentationNode(input: {
 
 export async function uploadDocumentationImage(
   formData: FormData,
+  authorization?: typeof SERVICE_AUTHORIZATION,
 ): Promise<ActionResult<{ asset: DocumentationAsset; signed_url: string; markdown: string }>> {
+  await authorizeMutation(authorization);
   const projectId = formData.get("project_id");
   const nodeId = formData.get("node_id");
   const altText = formData.get("alt_text");
@@ -300,7 +314,11 @@ export async function uploadDocumentationImage(
   };
 }
 
-export async function deleteDocumentationImage(assetId: string): Promise<ActionResult> {
+export async function deleteDocumentationImage(
+  assetId: string,
+  authorization?: typeof SERVICE_AUTHORIZATION,
+): Promise<ActionResult> {
+  await authorizeMutation(authorization);
   const supabase = getSupabase();
   if (!supabase) return notConfigured();
 

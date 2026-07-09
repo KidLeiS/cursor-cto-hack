@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabase } from "./data";
+import { requireAllowedUser } from "./auth";
 
 export type StepUpdate = {
   id: string;
@@ -13,6 +14,7 @@ export type StepUpdate = {
 };
 
 export async function updateWorkplanStep(step: StepUpdate) {
+  await requireAllowedUser();
   const supabase = getSupabase();
   if (!supabase) {
     return {

@@ -303,13 +303,9 @@ alter table public.roadmap_tasks enable row level security;
 alter table public.roadmap_task_dependencies enable row level security;
 
 drop policy if exists "roadmap_tasks_read" on public.roadmap_tasks;
-create policy "roadmap_tasks_read" on public.roadmap_tasks
-  for select using (true);
 
 drop policy if exists "roadmap_task_dependencies_read"
   on public.roadmap_task_dependencies;
-create policy "roadmap_task_dependencies_read"
-  on public.roadmap_task_dependencies for select using (true);
 
 revoke all on function public.create_roadmap_task(
   uuid, uuid, text, text, text, public.roadmap_task_status, integer, integer,
@@ -323,13 +319,13 @@ revoke all on function public.delete_roadmap_task(uuid, integer) from public;
 grant execute on function public.create_roadmap_task(
   uuid, uuid, text, text, text, public.roadmap_task_status, integer, integer,
   text, text, text, integer, uuid[]
-) to anon, authenticated;
+) to service_role;
 grant execute on function public.update_roadmap_task(
   uuid, integer, uuid, text, text, text, public.roadmap_task_status,
   integer, integer, text, text, text, integer, uuid[]
-) to anon, authenticated;
+) to service_role;
 grant execute on function public.delete_roadmap_task(uuid, integer)
-  to anon, authenticated;
+  to service_role;
 
 -- Seed a deterministic linear roadmap. The same rows also power integration
 -- environments, while the dashboard has an equivalent no-secrets fallback.

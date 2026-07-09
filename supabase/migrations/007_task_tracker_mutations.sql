@@ -136,11 +136,11 @@ revoke all on function public.delete_task_tracker_item(uuid, integer)
 
 grant execute on function public.update_task_tracker_item(
   uuid, integer, text, text, public.task_tracker_priority, date, date, integer
-) to anon, authenticated;
+) to service_role;
 grant execute on function public.reschedule_task_tracker_item(
   uuid, integer, date, date
-) to anon, authenticated;
+) to service_role;
 grant execute on function public.complete_task_tracker_item(uuid, integer)
-  to anon, authenticated;
+  to service_role;
 grant execute on function public.delete_task_tracker_item(uuid, integer)
-  to anon, authenticated;
+  to service_role;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { actionTaskTrackerItem } from "@/lib/task-tracker-actions";
+import { requireApiUser } from "@/lib/auth";
 import { actionTaskTrackerItemSchema } from "@/lib/task-tracker-validation";
 
 type RouteContext = {
@@ -8,6 +9,8 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, context: RouteContext) {
+  const unauthorized = await requireApiUser();
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   if (!z.string().uuid().safeParse(id).success) {
     return NextResponse.json(

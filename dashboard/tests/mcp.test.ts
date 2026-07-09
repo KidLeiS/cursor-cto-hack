@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { POST } from "../src/app/api/mcp/route";
 
-const originalKey = process.env.MCP_API_KEY;
+const originalKey = process.env.MCP_TEST_API_KEY;
 const key = "test-mcp-key";
 
 function request(method: string, params: Record<string, unknown> = {}, token = key) {
@@ -18,12 +18,12 @@ function request(method: string, params: Record<string, unknown> = {}, token = k
 
 describe("remote MCP endpoint", () => {
   before(() => {
-    process.env.MCP_API_KEY = key;
+    process.env.MCP_TEST_API_KEY = key;
   });
 
   after(() => {
-    if (originalKey === undefined) delete process.env.MCP_API_KEY;
-    else process.env.MCP_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.MCP_TEST_API_KEY;
+    else process.env.MCP_TEST_API_KEY = originalKey;
   });
 
   it("negotiates Streamable HTTP initialization", async () => {
