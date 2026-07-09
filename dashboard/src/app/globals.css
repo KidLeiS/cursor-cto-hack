@@ -4261,3 +4261,71 @@ a.button-quiet:hover {
   background: #5f8f19;
   color: #ffffff;
 }
+
+/* Right roadmap panel typography */
+
+.feature-panel,
+.feature-detail {
+  font-size: 16px;
+}
+
+.feature-panel h1 {
+  font-size: 42px;
+  line-height: 1.08;
+}
+
+.feature-panel h2,
+.feature-detail .detail-feature-heading h2 {
+  font-size: 32px;
+  line-height: 1.12;
+}
+
+.feature-panel h3,
+.feature-detail .subtask-heading strong,
+.feature-detail .roadmap-contract summary {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.feature-detail .feature-summary,
+.feature-detail .detail-progress,
+.feature-detail .detail-progress > div:first-child,
+.feature-detail .roadmap-contract p,
+.feature-detail .subtask strong,
+.feature-detail .empty-state,
+.feature-detail .roadmap-actions button,
+.feature-detail .roadmap-actions a {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.feature-detail .roadmap-estimate {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.feature-detail .roadmap-contract strong,
+.feature-detail .subtask small,
+.feature-detail .eyebrow {
+  font-size: 12px;
+}
+
+.feature-detail .roadmap-contract {
+  gap: 16px;
+  padding: 16px;
+}
+
+.feature-detail .roadmap-contract > div {
+  gap: 7px;
+}
+
+.feature-detail .roadmap-actions {
+  gap: 9px;
+}
+
+.feature-detail .roadmap-actions button,
+.feature-detail .roadmap-actions a {
+  min-height: 42px;
+  height: auto;
+  padding: 9px 13px;
+}
