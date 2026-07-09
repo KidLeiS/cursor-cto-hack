@@ -1,136 +1,136 @@
-# Cursor CTO — Async Cloud Architecture Agent
+# Sushicode
 
-**iOS Cursor Hack · Sponsored by [Cursor](https://cursor.com) & [Supabase](https://supabase.com)**
+Sushicode is a shared product workspace for people and coding agents. It turns
+documentation, an executable roadmap, and a visual project map into durable
+context that Cursor, Codex, and other MCP-capable agents can read and update.
 
-Harness-native CTO toolkit: Cursor (or Codex / Claude) runs the agents; **our intelligence** is skills + shared context + an editable workplan dashboard.
+Built for the Cursor iOS Hack with [Cursor](https://cursor.com),
+[Supabase](https://supabase.com), and Vercel.
 
----
+## What you can do
 
-## Stack (Option B)
+- Organize Markdown documentation as a draggable, resizable canvas tree.
+- Edit notes with a rich Markdown editor and attach images.
+- Track roadmap tasks, dependencies, prompts, validation gates, and progress.
+- Turn timeline notes into documentation and roadmap work.
+- Connect an agent through remote MCP so it can read and edit shared context.
+- See documentation and roadmap updates in the workspace without refreshing.
 
-| Piece | Role |
-| --- | --- |
-| **Cursor / Codex / Claude** | Superior harness (tools, cloud agents, iOS) |
-| **Skills + prompts** | Portable “brain” — Feature & Debug agents |
-| **Supabase** | Shared mutable context agents and UI both read/write |
-| **Vercel dashboard** | Visualise maps/gates; **edit workplans** before implementers run |
-| **GitHub Actions** | Unit tests locally-style; migrate + Vercel deploy + prod smoke |
+## Agent workflow
 
-**Contract:** dashboard edits win. Implement prompts always re-read the step from Supabase before coding.
-
----
-
-## Environment setup
-
-GitHub Actions already has:
-
-| Secret | What it is | Used by |
-| --- | --- | --- |
-| `SB_URL` | `https://<ref>.supabase.co` | migration + production smoke |
-| `SB_PK` | Supabase **anon public** key | production smoke |
-| `SB_PW` | Database password | migration only |
-
-Set these Vercel project environment variables for Production and Preview:
-
-| Variable | Value |
-| --- | --- |
-| `SB_URL` | same project URL |
-| `SB_PK` | same anon public key |
-| `NEXT_PUBLIC_PROJECT_SLUG` | `cursor-cto-hack` |
-| `DS_API` / `ds_api` | server-side DeepSeek key used by the task tracker |
-| `DEEPSEEK_MODEL` | optional; defaults to `deepseek-chat` |
-| `CF_ACC` | Cloudflare account that runs Workers AI speech recognition |
-| `CF_API` | Cloudflare token with Workers AI Read + Edit permissions |
-| `MCP_API_KEY` | strong shared secret for remote agent read/write access |
-
-`SB_PW` is not needed by the dashboard and should stay only in GitHub Actions.
-DeepSeek, Cloudflare, and MCP variables must not use the `NEXT_PUBLIC_` prefix.
-`MCP_API_KEY` must also remain server-side. See the
-[remote MCP setup guide](docs/remote-mcp.md) for Vercel and Cursor configuration.
-
----
-
-## CI pipeline (hackathon)
+The dashboard is the shared source of truth. An agent reads the relevant
+documentation or roadmap task before acting, makes a version-protected update,
+then re-reads the result to verify it.
 
 ```text
-PR / push  → GitHub Actions unit + typecheck (no secrets)
-push main  → GitHub Actions migrate Supabase
-push/PR    → Vercel's GitHub integration deploys dashboard/
-deploy OK  → GitHub deployment_status event → production smoke
+Person or agent → Sushicode documentation / roadmap → implementation → validation
 ```
 
-Workflows: [CI](.github/workflows/ci.yml) and [production smoke](.github/workflows/production-smoke.yml).
+The remote MCP exposes 10 tools:
 
-### One-time Vercel setup (no CLI tokens)
+```text
+documentation_list · documentation_get · documentation_create
+documentation_update · documentation_delete
+roadmap_list · roadmap_get · roadmap_create · roadmap_update · roadmap_delete
+```
 
-1. Vercel dashboard → **Add New → Project**
-2. Import `KidLeiS/cursor-cto-hack`
-3. Set **Root Directory** to `dashboard`
-4. Framework preset: **Next.js**
-5. Add the Vercel variables above for Production + Preview
-6. Deploy
+Every edit and delete uses optimistic locking. If someone changed a record after
+an agent read it, the stale write fails instead of silently overwriting their work.
 
-Vercel then deploys every push itself and reports the deployment URL back to GitHub. No `VERCEL_TOKEN`, org ID, project ID, or deployment CLI is required.
+## Connect Cursor or Cursor iOS
 
----
+Sushicode uses a remote Streamable HTTP MCP endpoint:
 
-## Local unit tests (no secrets)
+```text
+https://YOUR-VERCEL-DOMAIN/api/mcp
+```
+
+Configure the server in Cursor:
+
+```json
+{
+  "mcpServers": {
+    "sushicode": {
+      "url": "https://YOUR-VERCEL-DOMAIN/api/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_MCP_API_KEY",
+        "MCP-Protocol-Version": "2025-11-25"
+      }
+    }
+  }
+}
+```
+
+Cursor iOS selects MCP servers configured for Cloud Agents; add the remote
+server at [cursor.com/agents](https://cursor.com/agents) first, then enable it
+for the mobile run. Do not commit a real key.
+
+See [the remote MCP guide](docs/remote-mcp.md) for Vercel setup, Cursor setup,
+curl verification, and security notes.
+
+## Run locally
 
 ```bash
 cd dashboard
 pnpm install
-pnpm test        # node:test domain helpers + demo bundle
-pnpm typecheck
-```
-
----
-
-## Two agent kinds
-
-### Feature agent
-Intent (and optional frontend notes) → modules + validation gates + editable workplan → cheap implement/validate loops.
-
-- Skill: [`skills/feature-agent/SKILL.md`](skills/feature-agent/SKILL.md)
-- Prompts: [`prompts/feature-plan.md`](prompts/feature-plan.md), [`prompts/feature-implement.md`](prompts/feature-implement.md)
-
-### Debug agent
-Symptom / failing gate → triage + minimal fix workplan → implement/validate (no feature expansion).
-
-- Skill: [`skills/debug-agent/SKILL.md`](skills/debug-agent/SKILL.md)
-- Prompts: [`prompts/debug-plan.md`](prompts/debug-plan.md), [`prompts/debug-implement.md`](prompts/debug-implement.md)
-
----
-
-## Repo layout
-
-```text
-.
-├── .github/workflows/ci.yml
-├── scripts/migrate.mjs          # SB_URL + SB_PW
-├── scripts/smoke.mjs            # DASHBOARD_URL + SB_URL + SB_PK
-├── shared/types.ts
-├── supabase/migrations/
-├── skills/  prompts/  templates/  platform/
-└── dashboard/                   # Next.js → Vercel
-```
-
----
-
-## Manual Supabase (optional)
-
-CI migrate applies [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql). You can also paste it in the Supabase SQL editor once.
-
-Local dashboard without secrets loads **demo** data. With `.env.local`:
-
-```bash
-cd dashboard
 cp .env.example .env.local
-# NEXT_PUBLIC_SUPABASE_URL=<SB_URL>
-# NEXT_PUBLIC_SUPABASE_ANON_KEY=<SB_PK>
 pnpm dev
 ```
 
----
+Without Supabase credentials, the dashboard starts with demo data. To connect a
+real project, set these in `dashboard/.env.local`:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+NEXT_PUBLIC_PROJECT_SLUG=cursor-cto-hack
+MCP_API_KEY=YOUR_LOCAL_MCP_SECRET
+```
+
+## Deploy with Vercel
+
+1. Import this repository in Vercel.
+2. Set the project root directory to `dashboard`.
+3. Select the Next.js framework preset.
+4. Add the environment variables below for Production and Preview.
+5. Deploy.
+
+| Variable | Purpose |
+| --- | --- |
+| `SB_URL` | Supabase project URL |
+| `SB_PK` | Supabase anon key |
+| `NEXT_PUBLIC_PROJECT_SLUG` | Project slug; normally `cursor-cto-hack` |
+| `DS_API` | Server-side DeepSeek key for the task tracker |
+| `DEEPSEEK_MODEL` | Optional; defaults to `deepseek-chat` |
+| `CF_ACC` | Cloudflare account ID for Workers AI transcription |
+| `CF_API` | Cloudflare token for Workers AI transcription |
+| `MCP_API_KEY` | Server-only secret for remote MCP access |
+
+Never prefix `DS_API`, `CF_API`, or `MCP_API_KEY` with `NEXT_PUBLIC_`. Changes
+to Vercel environment variables require a redeploy.
+
+## Verify
+
+```bash
+cd dashboard
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+CI runs unit tests and type checks on pushes, applies Supabase migrations on
+`main`, and runs a production smoke test after Vercel deploys.
+
+## Project layout
+
+```text
+dashboard/              Next.js workspace and remote MCP endpoint
+supabase/migrations/    PostgreSQL schema and RPCs
+shared/                 Shared TypeScript data contracts
+docs/                   Backend, API, and MCP guides
+skills/ and prompts/    Portable agent workflows
+scripts/                Migration and production smoke tooling
+```
 
 ## License
 
