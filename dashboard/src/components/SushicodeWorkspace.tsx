@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type WheelEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   createDocumentationNode,
   deleteDocumentationNode,
@@ -412,6 +413,7 @@ export function SushicodeWorkspace({
   roadmapBundle,
   taskTrackerItems,
 }: WorkspaceProps) {
+  const router = useRouter();
   const initialNodes = useMemo(
     () =>
       documentationNodes.length
@@ -793,12 +795,25 @@ export function SushicodeWorkspace({
         : [...current, roadmap];
     });
     setActiveRoadmapTaskId(result.data.roadmap.id);
+    router.refresh();
     setToast("Documentation updated · roadmap task ready");
   }
 
   async function updateRoadmapTask(
     task: RoadmapTask,
-    changes: Partial<Pick<RoadmapTask, "status" | "progress_percent">>,
+    changes: Partial<
+      Pick<
+        RoadmapTask,
+        | "title"
+        | "description"
+        | "status"
+        | "progress_percent"
+        | "estimate_minutes"
+        | "planning_prompt"
+        | "implementation_prompt"
+        | "validation_gate"
+      >
+    >,
   ) {
     setUpdatingRoadmapTaskId(task.id);
     const result = await roadmapRequest<RoadmapTask>(`/api/tasks/${task.id}`, {
@@ -806,14 +821,19 @@ export function SushicodeWorkspace({
       body: JSON.stringify({
         parent_task_id: task.parent_task_id,
         slug: task.slug,
-        title: task.title,
-        description: task.description,
+        title: changes.title ?? task.title,
+        description:
+          changes.description === undefined ? task.description : changes.description,
         status: changes.status ?? task.status,
         progress_percent: changes.progress_percent ?? task.progress_percent,
-        estimate_minutes: task.estimate_minutes,
-        planning_prompt: task.planning_prompt,
-        implementation_prompt: task.implementation_prompt,
-        validation_gate: task.validation_gate,
+        estimate_minutes:
+          changes.estimate_minutes === undefined
+            ? task.estimate_minutes
+            : changes.estimate_minutes,
+        planning_prompt: changes.planning_prompt ?? task.planning_prompt,
+        implementation_prompt:
+          changes.implementation_prompt ?? task.implementation_prompt,
+        validation_gate: changes.validation_gate ?? task.validation_gate,
         sort_order: task.sort_order,
         expected_lock_version: task.lock_version,
         dependency_ids: roadmapDependencies
@@ -835,11 +855,81 @@ export function SushicodeWorkspace({
         candidate.id === result.data.id ? result.data : candidate,
       ),
     );
+    router.refresh();
     setToast(
       result.data.status === "done"
         ? "Roadmap task completed"
         : "Roadmap task updated",
     );
+  }
+
+  async function createRoadmapTaskLocally() {
+    const title = window.prompt("Task title");
+    if (!title?.trim()) return;
+    const description = window.prompt("Short description (optional)", "")?.trim() || null;
+    const result = await roadmapRequest<RoadmapTask>("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        parent_task_id: null,
+        slug: `${slugify(title)}-${Date.now().toString(36)}`,
+        title: title.trim(),
+        description,
+        status: "planned",
+        progress_percent: 0,
+        estimate_minutes: null,
+        planning_prompt: `Plan ${title.trim()} and identify the required dependencies.`,
+        implementation_prompt: `Implement ${title.trim()} according to the approved plan.`,
+        validation_gate: `Validate that ${title.trim()} meets its documented acceptance criteria.`,
+        sort_order: roadmapTree.roots.length,
+        dependency_ids: [],
+      }),
+    });
+    if (!result.ok) {
+      setToast(result.error);
+      return;
+    }
+    setRoadmapTasks((current) => [...current, result.data]);
+    setActiveRoadmapTaskId(result.data.id);
+    router.refresh();
+    setToast("Roadmap task created");
+  }
+
+  async function editRoadmapTaskLocally(task: RoadmapTask) {
+    const title = window.prompt("Task title", task.title);
+    if (title === null || !title.trim()) return;
+    const description = window.prompt("Description", task.description ?? "");
+    if (description === null) return;
+    const estimate = window.prompt(
+      "Estimate in minutes (leave blank for unestimated)",
+      task.estimate_minutes?.toString() ?? "",
+    );
+    if (estimate === null) return;
+    const estimateMinutes = estimate.trim() ? Number(estimate) : null;
+    if (
+      estimateMinutes !== null &&
+      (!Number.isInteger(estimateMinutes) || estimateMinutes <= 0)
+    ) {
+      setToast("Estimate must be a positive number of minutes");
+      return;
+    }
+    const planning = window.prompt("Planning prompt", task.planning_prompt);
+    if (planning === null || !planning.trim()) return;
+    const implementation = window.prompt(
+      "Implementation prompt",
+      task.implementation_prompt,
+    );
+    if (implementation === null || !implementation.trim()) return;
+    const validation = window.prompt("Validation gate", task.validation_gate);
+    if (validation === null || !validation.trim()) return;
+
+    await updateRoadmapTask(task, {
+      title: title.trim(),
+      description: description.trim() || null,
+      estimate_minutes: estimateMinutes,
+      planning_prompt: planning.trim(),
+      implementation_prompt: implementation.trim(),
+      validation_gate: validation.trim(),
+    });
   }
 
   const openTimeline = timeline.find((item) => item.id === openTimelineId) ?? null;
@@ -1305,6 +1395,14 @@ export function SushicodeWorkspace({
                 </div>
               </details>
               <div className="roadmap-actions">
+                <button
+                  className="button-quiet"
+                  disabled={updatingRoadmapTaskId === activeRoadmapTask.id}
+                  onClick={() => void editRoadmapTaskLocally(activeRoadmapTask)}
+                  type="button"
+                >
+                  Edit task
+                </button>
                 {activeRoadmapTask.status === "planned" ||
                 activeRoadmapTask.status === "ready" ? (
                   <button
@@ -1349,6 +1447,14 @@ export function SushicodeWorkspace({
                   <span className="eyebrow">Agent plan</span>
                   <h2>Roadmap</h2>
                 </div>
+                <button
+                  aria-label="Create roadmap task"
+                  className="icon-button subtle"
+                  onClick={() => void createRoadmapTaskLocally()}
+                  type="button"
+                >
+                  <Icon name="plus" />
+                </button>
               </div>
               <div className="feature-overview">
                 <span>{roadmapTree.roots.length} top-level tasks</span>

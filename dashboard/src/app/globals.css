@@ -299,6 +299,16 @@ section .hint {
   background: rgba(10, 15, 12, 0.58);
 }
 
+.dag-editor-status {
+  max-width: min(430px, calc(100% - 2rem));
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--line);
+  background: rgba(15, 20, 18, 0.9);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
 .react-flow__node.dag-node {
   width: 260px;
   border: 1px solid rgba(196, 240, 130, 0.32);
