@@ -2,6 +2,8 @@ import Link from "next/link";
 import { TaskList } from "@/components/TaskList";
 import { buildRoadmapTree, loadRoadmapBundle } from "@/lib/roadmap";
 
+export const dynamic = "force-dynamic";
+
 export default async function TasksPage() {
   const bundle = await loadRoadmapBundle();
   const tree = buildRoadmapTree(bundle.tasks);

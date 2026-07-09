@@ -10,6 +10,8 @@ import {
 } from "@/lib/roadmap";
 import type { RoadmapTask } from "@shared/types";
 
+export const dynamic = "force-dynamic";
+
 function TaskInstructions({ task }: { task: RoadmapTask }) {
   return (
     <article className="instruction-card" id={`task-${task.id}`}>
