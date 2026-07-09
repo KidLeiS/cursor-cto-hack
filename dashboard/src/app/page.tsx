@@ -1,15 +1,10 @@
-export default function HomePage() {
-  return (
-    <main
-      style={{
-        minHeight: "100vh",
-        width: "100%",
-        display: "grid",
-        placeItems: "center",
-        padding: "1.5rem",
-      }}
-    >
-      <h1 className="brand">sushicode is code</h1>
-    </main>
-  );
+import { SushicodeWorkspace } from "@/components/SushicodeWorkspace";
+import { loadDashboardBundle } from "@/lib/data";
+import { loadDocumentationNodes } from "@/lib/documentation";
+
+export default async function HomePage() {
+  const bundle = await loadDashboardBundle();
+  const documentationNodes = await loadDocumentationNodes(bundle.project.id).catch(() => []);
+
+  return <SushicodeWorkspace bundle={bundle} documentationNodes={documentationNodes} />;
 }

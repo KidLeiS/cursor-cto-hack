@@ -21,8 +21,8 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "sushicode is code",
-  description: "sushicode is code",
+  title: "Sushicode — Spatial development workspace",
+  description: "Plan projects spatially and coordinate agent execution.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
