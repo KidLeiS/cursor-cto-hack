@@ -1214,6 +1214,7 @@ export function SushicodeWorkspace({
                   "ia-node",
                   isFolder ? "folder-node" : "document-node",
                   isSelected ? "selected" : "",
+                  nodeMenuId === node.id ? "menu-open" : "",
                   drag?.id === node.id ? "dragging" : "",
                   movingId === node.id ? "moving" : "",
                 ]
