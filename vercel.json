@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pnpm --dir dashboard install --frozen-lockfile",
+  "buildCommand": "pnpm --dir dashboard build",
+  "ignoreCommand": "exit 1",
+  "builds": [
+    {
+      "src": "dashboard/package.json",
+      "use": "@vercel/next"
+    }
+  ]
+}

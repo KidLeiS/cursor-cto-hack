@@ -32,6 +32,15 @@ export type WorkplanStepStatus =
 
 export type Harness = "cursor" | "codex" | "claude";
 
+export type RoadmapTaskStatus =
+  | "planned"
+  | "ready"
+  | "in_progress"
+  | "validating"
+  | "done"
+  | "blocked"
+  | "cancelled";
+
 export interface Project {
   id: string;
   slug: string;
@@ -138,6 +147,39 @@ export interface DebugCase {
   fix_summary: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * The shared core model for both roadmap tasks and subtasks.
+ * A null parent_task_id denotes a top-level task; every other field has the
+ * same meaning at every depth.
+ */
+export interface RoadmapTask {
+  id: string;
+  project_id: string;
+  parent_task_id: string | null;
+  slug: string;
+  title: string;
+  description: string | null;
+  status: RoadmapTaskStatus;
+  progress_percent: number;
+  estimate_minutes: number | null;
+  planning_prompt: string;
+  implementation_prompt: string;
+  validation_gate: string;
+  sort_order: number;
+  lock_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A directed edge: task_id cannot start until depends_on_task_id is complete. */
+export interface RoadmapTaskDependency {
+  id: string;
+  project_id: string;
+  task_id: string;
+  depends_on_task_id: string;
+  created_at: string;
 }
 
 export type DocumentationCanvasMetadata = Record<string, unknown>;

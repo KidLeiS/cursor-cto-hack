@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import "@mdxeditor/editor/style.css";
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 const display = Fraunces({
