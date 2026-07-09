@@ -4,6 +4,7 @@ import type { TaskTrackerItem } from "../../shared/types";
 import {
   DeepSeekTaskParserError,
   parseTasksWithDeepSeek,
+  resolveDeepSeekApiKey,
 } from "../src/lib/deepseek-task-parser";
 import {
   formatTaskTrackerDate,
@@ -87,6 +88,34 @@ describe("task tracker schema", () => {
 });
 
 describe("DeepSeek task parser", () => {
+  it("uses the canonical DS_API secret and supports the legacy lowercase alias", () => {
+    assert.equal(
+      resolveDeepSeekApiKey(undefined, { DS_API: "canonical-key" }),
+      "canonical-key",
+    );
+    assert.equal(
+      resolveDeepSeekApiKey(undefined, { ds_api: "legacy-key" }),
+      "legacy-key",
+    );
+  });
+
+  it("prefers an explicit key, then the canonical secret", () => {
+    assert.equal(
+      resolveDeepSeekApiKey("explicit-key", {
+        DS_API: "canonical-key",
+        ds_api: "legacy-key",
+      }),
+      "explicit-key",
+    );
+    assert.equal(
+      resolveDeepSeekApiKey(undefined, {
+        DS_API: "canonical-key",
+        ds_api: "legacy-key",
+      }),
+      "canonical-key",
+    );
+  });
+
   it("requests JSON and validates the structured response", async () => {
     let requestBody: Record<string, unknown> | undefined;
     const result = await parseTasksWithDeepSeek("Prepare launch by Saturday", {
