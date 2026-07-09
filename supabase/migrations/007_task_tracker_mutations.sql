@@ -2,16 +2,11 @@
 -- Calendar completion is distinct from "actioned", which means the item has
 -- been promoted into documentation and the roadmap.
 
-alter type public.task_tracker_status add value if not exists 'completed';
-
-alter table public.task_tracker_items
-  add column if not exists completed_at timestamptz;
-
 do $$ begin
   alter table public.task_tracker_items
     add constraint task_tracker_completed_state check (
-      (status::text = 'completed' and completed_at is not null)
-      or status::text <> 'completed'
+      (status = 'completed' and completed_at is not null)
+      or status <> 'completed'
     );
 exception when duplicate_object then null;
 end $$;
@@ -44,7 +39,7 @@ begin
       action_error = null
   where id = p_item_id
     and lock_version = p_expected_lock_version
-    and status::text in ('pending', 'failed')
+    and status in ('pending', 'failed')
   returning * into v_item;
 
   if v_item.id is null then return; end if;
@@ -72,7 +67,7 @@ begin
       action_error = null
   where id = p_item_id
     and lock_version = p_expected_lock_version
-    and status::text not in ('actioning', 'cancelled', 'completed')
+    and status not in ('actioning', 'cancelled', 'completed')
   returning * into v_item;
 
   if v_item.id is null then return; end if;
@@ -93,12 +88,12 @@ declare
   v_item public.task_tracker_items;
 begin
   update public.task_tracker_items
-  set status = 'completed'::public.task_tracker_status,
+  set status = 'completed',
       completed_at = now(),
       action_error = null
   where id = p_item_id
     and lock_version = p_expected_lock_version
-    and status::text not in ('actioning', 'cancelled', 'completed')
+    and status not in ('actioning', 'cancelled', 'completed')
   returning * into v_item;
 
   if v_item.id is null then return; end if;
@@ -121,7 +116,7 @@ begin
   delete from public.task_tracker_items
   where id = p_item_id
     and lock_version = p_expected_lock_version
-    and status::text <> 'actioning'
+    and status <> 'actioning'
   returning true into v_deleted;
 
   return coalesce(v_deleted, false);

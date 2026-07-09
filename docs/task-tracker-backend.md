@@ -43,8 +43,9 @@ Vercel. A custom token needs Workers AI Read and Workers AI Edit permissions.
 Migration `005_task_tracker.sql` creates `task_tracker_items`, priority and
 status enums, calendar indexes, optimistic versioning, and the
 `update_task_tracker_action` checkpoint RPC. Migration
-`006_task_tracker_mutations.sql` adds manual completion and optimistic RPCs for
-editing, drag-rescheduling, completing, and deleting calendar items.
+`006_task_tracker_completion_status.sql` adds manual completion, then
+`007_task_tracker_mutations.sql` adds optimistic RPCs for editing,
+drag-rescheduling, completing, and deleting calendar items.
 
 The calendar record stores:
 

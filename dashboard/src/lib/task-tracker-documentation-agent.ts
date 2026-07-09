@@ -25,6 +25,7 @@ type AgentMessage =
       role: "assistant";
       content: string | null;
       tool_calls?: ToolCall[];
+      reasoning_content?: string | null;
     }
   | { role: "tool"; tool_call_id: string; content: string };
 
@@ -448,6 +449,7 @@ export async function runDocumentationAgent(
         message?: {
           content?: string | null;
           tool_calls?: ToolCall[];
+          reasoning_content?: string | null;
         };
       }>;
     };
@@ -463,6 +465,9 @@ export async function runDocumentationAgent(
       role: "assistant",
       content: message.content ?? null,
       ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+      ...(message.reasoning_content
+        ? { reasoning_content: message.reasoning_content }
+        : {}),
     });
 
     if (!toolCalls.length) {
