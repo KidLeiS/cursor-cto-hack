@@ -484,6 +484,7 @@ export function SushicodeWorkspace({
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const taskInputRef = useRef<HTMLTextAreaElement>(null);
+  const suppressNodeClickRef = useRef(false);
   const [nodeMenuId, setNodeMenuId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [workspaceModal, setWorkspaceModal] = useState<WorkspaceModal>(null);
@@ -636,6 +637,10 @@ export function SushicodeWorkspace({
   }
 
   function selectNode(node: DocumentationNode) {
+    if (suppressNodeClickRef.current) {
+      suppressNodeClickRef.current = false;
+      return;
+    }
     if (movingId && movingId !== node.id) {
       const moving = nodes.find((item) => item.id === movingId);
       if (moving) {
@@ -664,6 +669,7 @@ export function SushicodeWorkspace({
     if ((childrenByParent.get(node.id) ?? []).length) {
       setExpanded((current) => new Set(current).add(node.id));
     }
+    setEditorNodeId(node.id);
   }
 
   function toggleNode(nodeId: string) {
@@ -701,6 +707,10 @@ export function SushicodeWorkspace({
 
   function handleNodePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     if (!drag) return;
+    const moved =
+      Math.abs(event.clientX - drag.pointerX) > 4 ||
+      Math.abs(event.clientY - drag.pointerY) > 4;
+    suppressNodeClickRef.current = moved;
     const next = {
       x: Math.round(drag.origin.x + (event.clientX - drag.pointerX) / zoom),
       y: Math.round(drag.origin.y + (event.clientY - drag.pointerY) / zoom),
@@ -714,6 +724,42 @@ export function SushicodeWorkspace({
           setPositions((current) => ({ ...current, [node.id]: drag.origin }));
         }
       });
+    }
+  }
+
+  function sortCanvasLayout() {
+    const nextPositions: Record<string, Point> = {};
+    const expandedIds = new Set<string>();
+    let row = 0;
+
+    const place = (node: DocumentationNode, depth: number) => {
+      const size = nodeSize(node);
+      nextPositions[node.id] = {
+        x: 160 + depth * 390,
+        y: 120 + row * 220,
+      };
+      row += Math.max(1, Math.ceil(size.height / 170));
+      const children = childrenByParent.get(node.id) ?? [];
+      if (children.length) expandedIds.add(node.id);
+      for (const child of children) place(child, depth + 1);
+    };
+
+    for (const root of childrenByParent.get(null) ?? []) place(root, 0);
+    setPositions((current) => ({ ...current, ...nextPositions }));
+    setExpanded(expandedIds);
+    setPan({ x: 250, y: 24 });
+    setZoom(0.82);
+    setToast("Canvas sorted into clean layers");
+
+    if (backendEnabled) {
+      void (async () => {
+        for (const node of nodes) {
+          const point = nextPositions[node.id];
+          if (point && !node.id.startsWith("demo-")) {
+            await persistNodeMove(node, point);
+          }
+        }
+      })();
     }
   }
 
@@ -1537,6 +1583,14 @@ export function SushicodeWorkspace({
             type="button"
           >
             <Icon name="grid" />
+          </button>
+          <button
+            aria-label="Sort canvas into layers"
+            className="sort-canvas-button"
+            onClick={sortCanvasLayout}
+            type="button"
+          >
+            Sort
           </button>
         </div>
       </div>

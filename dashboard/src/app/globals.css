@@ -1489,6 +1489,14 @@ a.button-quiet:hover {
   font-size: 9px;
 }
 
+.canvas-controls .sort-canvas-button {
+  width: auto;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
 .canvas-controls > span {
   width: 1px;
   height: 18px;
