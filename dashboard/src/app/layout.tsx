@@ -21,8 +21,8 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cursor CTO",
-  description: "Feature & Debug agent control surface — workplans, gates, modules",
+  title: "sushicode is code",
+  description: "sushicode is code",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
