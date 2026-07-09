@@ -26,11 +26,15 @@ import {
   type MDXEditorProps,
 } from "@mdxeditor/editor";
 import { forwardRef } from "react";
+import type { DocumentationAsset } from "../../../../shared/types";
 
-type Props = MDXEditorProps & { nodeId: string };
+type Props = MDXEditorProps & {
+  nodeId: string;
+  onAssetUploaded?: (asset: DocumentationAsset & { signed_url: string }) => void;
+};
 
 const InitializedMarkdownEditor = forwardRef<MDXEditorMethods, Props>(
-  function InitializedMarkdownEditor({ nodeId, ...props }, ref) {
+  function InitializedMarkdownEditor({ nodeId, onAssetUploaded, ...props }, ref) {
     async function uploadImage(file: File): Promise<string> {
       const formData = new FormData();
       formData.set("node_id", nodeId);
@@ -42,7 +46,11 @@ const InitializedMarkdownEditor = forwardRef<MDXEditorMethods, Props>(
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "Image upload failed.");
       }
-      return result.data.url as string;
+      onAssetUploaded?.({
+        ...result.data.asset,
+        signed_url: result.data.signed_url,
+      });
+      return `/api/docs/assets/${result.data.asset.id}/content`;
     }
 
     return (
