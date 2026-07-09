@@ -277,7 +277,7 @@ function buildTimeline(bundle: DashboardBundle): TimelineItem[] {
     status: step.status,
     sort: index * 2 + 1,
   }));
-  const items = [...runItems, ...stepItems]
+  const items: TimelineItem[] = [...runItems, ...stepItems]
     .sort((a, b) => a.sort - b.sort)
     .slice(0, 7)
     .map(({ sort: _sort, ...item }) => item);
