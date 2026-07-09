@@ -41,6 +41,14 @@ export type RoadmapTaskStatus =
   | "blocked"
   | "cancelled";
 
+export type TaskTrackerPriority = "urgent" | "high" | "medium" | "low";
+export type TaskTrackerStatus =
+  | "pending"
+  | "actioning"
+  | "actioned"
+  | "failed"
+  | "cancelled";
+
 export interface Project {
   id: string;
   slug: string;
@@ -180,6 +188,35 @@ export interface RoadmapTaskDependency {
   task_id: string;
   depends_on_task_id: string;
   created_at: string;
+}
+
+/**
+ * A client-facing calendar item. It remains separate from the implementation
+ * roadmap until a product manager actions it.
+ */
+export interface TaskTrackerItem {
+  id: string;
+  project_id: string;
+  input_text: string;
+  title: string;
+  description: string;
+  priority: TaskTrackerPriority;
+  scheduled_for: string;
+  due_on: string | null;
+  estimate_minutes: number | null;
+  documentation_update: string;
+  roadmap_description: string;
+  roadmap_planning_prompt: string;
+  roadmap_implementation_prompt: string;
+  roadmap_validation_gate: string;
+  status: TaskTrackerStatus;
+  documentation_node_id: string | null;
+  roadmap_task_id: string | null;
+  action_error: string | null;
+  lock_version: number;
+  actioned_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type DocumentationCanvasMetadata = Record<string, unknown>;
