@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${body.variable} ${mono.variable}`}>
+      <body className={`${body.className} ${body.variable} ${mono.variable}`}>
         <style>{`
           :root {
             --font-display: var(--font-body-loaded), "Lato", sans-serif;
