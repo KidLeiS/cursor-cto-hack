@@ -75,6 +75,30 @@ async function main() {
     }
   });
   console.log("Dashboard HTML OK");
+
+  console.log("Smoke documentation API + seeded canvas");
+  await retry("Documentation workspace", async () => {
+    const health = await fetch(`${dashboardUrl}/api/docs/health`, {
+      headers: { "user-agent": "cursor-cto-smoke/1.0" },
+      redirect: "follow",
+    });
+    await mustOk(health, "documentation health");
+    const payload = await health.json();
+    if (!payload.ok || payload.status !== "ready" || payload.node_count < 10) {
+      throw new Error(`Unexpected documentation health: ${JSON.stringify(payload).slice(0, 200)}`);
+    }
+
+    const page = await fetch(`${dashboardUrl}/docs`, {
+      headers: { "user-agent": "cursor-cto-smoke/1.0" },
+      redirect: "follow",
+    });
+    await mustOk(page, "documentation page");
+    const html = await page.text();
+    if (!html.includes("Platform map") || !html.includes("Infrastructure")) {
+      throw new Error("Documentation page is missing seeded canvas data");
+    }
+  });
+  console.log("Documentation workspace OK");
   console.log("Smoke passed");
 }
 
