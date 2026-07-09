@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type FormEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type WheelEvent,
@@ -17,15 +18,19 @@ import {
 } from "@/lib/documentation-actions";
 import { updateWorkplanStep } from "@/lib/actions";
 import type { DashboardBundle } from "@/lib/data";
+import { formatTaskTrackerDate } from "@/lib/task-tracker-calendar";
 import type {
   DocumentationNode,
   Feature,
+  TaskTrackerItem,
+  TaskTrackerPriority,
   WorkplanStep,
 } from "../../../shared/types";
 
 type WorkspaceProps = {
   bundle: DashboardBundle;
   documentationNodes: DocumentationNode[];
+  taskTrackerItems: TaskTrackerItem[];
 };
 
 type Point = { x: number; y: number };
@@ -37,10 +42,60 @@ type TimelineItem = {
   priority: number;
   kind: "note" | "agent" | "task";
   status: string;
+  scheduledFor: string;
 };
 
 const NODE_WIDTH = 256;
 const NODE_HEIGHT = 138;
+const TRACKER_PRIORITY: Record<TaskTrackerPriority, number> = {
+  urgent: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+};
+
+type TrackerApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; data?: TaskTrackerItem };
+
+async function trackerRequest<T>(
+  url: string,
+  init: RequestInit,
+): Promise<TrackerApiResult<T>> {
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init.headers },
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) {
+      return {
+        ok: false,
+        error: body.error || `Request failed (${response.status}).`,
+        data: body.data,
+      };
+    }
+    return body;
+  } catch {
+    return { ok: false, error: "The task tracker could not be reached." };
+  }
+}
+
+function localIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function fullCalendarDate(date: string): string {
+  return new Intl.DateTimeFormat("en", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${date}T12:00:00`));
+}
 
 function Icon({
   name,
@@ -258,57 +313,52 @@ function initialPositions(nodes: DocumentationNode[]): Record<string, Point> {
   return result;
 }
 
-function buildTimeline(bundle: DashboardBundle): TimelineItem[] {
-  const runItems = bundle.agentRuns.map((run, index) => ({
-    id: `run-${run.id}`,
-    title: run.title,
-    note: run.intent,
-    priority: run.status === "failed" ? 5 : run.status === "implementing" ? 4 : 3,
-    kind: "agent" as const,
-    status: run.status,
-    sort: index * 2,
-  }));
-  const stepItems = bundle.steps.map((step, index) => ({
-    id: `step-${step.id}`,
-    title: step.title,
-    note: step.implementation_plan,
-    priority: step.status === "blocked" ? 5 : step.status === "ready" ? 4 : 2,
-    kind: "task" as const,
-    status: step.status,
-    sort: index * 2 + 1,
-  }));
-  const items: TimelineItem[] = [...runItems, ...stepItems]
-    .sort((a, b) => a.sort - b.sort)
-    .slice(0, 7)
-    .map(({ sort: _sort, ...item }) => item);
+function trackerTimelineItem(item: TaskTrackerItem): TimelineItem {
+  return {
+    id: `tracker-${item.id}`,
+    title: item.title,
+    note: item.description,
+    priority: TRACKER_PRIORITY[item.priority],
+    kind: item.status === "actioned" ? "task" : "note",
+    status: item.status,
+    scheduledFor: item.scheduled_for,
+  };
+}
 
-  if (items.length < 4) {
-    items.push(
-      {
-        id: "note-review",
-        title: "Review product IA",
-        note: "Validate that the current information architecture matches how the team talks about the product.",
-        priority: 5,
-        kind: "note",
-        status: "focus",
-      },
-      {
-        id: "note-sync",
-        title: "Sync with engineering",
-        note: "Resolve open backend contracts and confirm agent handoff boundaries.",
-        priority: 3,
-        kind: "note",
-        status: "planned",
-      },
-    );
-  }
-  return items;
+function buildTimeline(items: TaskTrackerItem[]): TimelineItem[] {
+  return [...items]
+    .sort(
+      (a, b) =>
+        a.scheduled_for.localeCompare(b.scheduled_for) ||
+        TRACKER_PRIORITY[b.priority] - TRACKER_PRIORITY[a.priority],
+    )
+    .map(trackerTimelineItem);
 }
 
 function timelineLabel(granularity: Granularity, index: number) {
   if (granularity === "hours") return `${String(9 + index).padStart(2, "0")}:00`;
   if (granularity === "days") return ["Mon 09", "Tue 10", "Wed 11", "Thu 12", "Fri 13"][index % 5];
   return `W${28 + index}`;
+}
+
+function trackerTimelineLabel(
+  item: TimelineItem,
+  granularity: Granularity,
+  index: number,
+  today: string,
+) {
+  if (granularity === "hours" && item.scheduledFor === today) {
+    return timelineLabel(granularity, index);
+  }
+  if (granularity === "weeks") {
+    const date = new Date(`${item.scheduledFor}T12:00:00`);
+    const start = new Date(date.getFullYear(), 0, 1);
+    const week = Math.ceil(
+      ((date.valueOf() - start.valueOf()) / 86400000 + start.getDay() + 1) / 7,
+    );
+    return `W${week}`;
+  }
+  return formatTaskTrackerDate(item.scheduledFor, today);
 }
 
 function featureProgress(feature: Feature, bundle: DashboardBundle, steps: WorkplanStep[]) {
@@ -325,7 +375,11 @@ function featureProgress(feature: Feature, bundle: DashboardBundle, steps: Workp
   return feature.status === "done" ? 100 : feature.status === "validating" ? 80 : 28;
 }
 
-export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProps) {
+export function SushicodeWorkspace({
+  bundle,
+  documentationNodes,
+  taskTrackerItems,
+}: WorkspaceProps) {
   const initialNodes = useMemo(
     () =>
       documentationNodes.length
@@ -361,11 +415,16 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
     origin: Point;
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const taskInputRef = useRef<HTMLInputElement>(null);
 
   const [granularity, setGranularity] = useState<Granularity>("hours");
   const [priorityMode, setPriorityMode] = useState(false);
-  const [timeline, setTimeline] = useState(() => buildTimeline(bundle));
+  const [trackerItems, setTrackerItems] = useState(taskTrackerItems);
+  const [timeline, setTimeline] = useState(() => buildTimeline(taskTrackerItems));
   const [openTimelineId, setOpenTimelineId] = useState<string | null>(null);
+  const [taskInput, setTaskInput] = useState("");
+  const [parsingTasks, setParsingTasks] = useState(false);
+  const [actioningTaskId, setActioningTaskId] = useState<string | null>(null);
 
   const [features, setFeatures] = useState(bundle.features);
   const [steps, setSteps] = useState(bundle.steps);
@@ -397,6 +456,7 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
 
   const visibleNodes = nodes.filter((node) => visibleIds.has(node.id));
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
+  const today = localIsoDate();
   const orderedTimeline = [...timeline].sort((a, b) =>
     priorityMode ? b.priority - a.priority : timeline.indexOf(a) - timeline.indexOf(b),
   );
@@ -616,19 +676,70 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
     event.target.value = "";
   }
 
-  function addTimelineItem() {
-    const title = window.prompt(`Add a note to this ${granularity.slice(0, -1)}`);
-    if (!title?.trim()) return;
-    const item: TimelineItem = {
-      id: `local-${Date.now()}`,
-      title: title.trim(),
-      note: "Click to add more detail and context.",
-      priority: 3,
-      kind: "note",
-      status: "draft",
-    };
-    setTimeline((current) => [...current, item]);
-    setOpenTimelineId(item.id);
+  async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const input = taskInput.trim();
+    if (input.length < 3) {
+      setToast("Describe the task before adding it");
+      taskInputRef.current?.focus();
+      return;
+    }
+
+    setParsingTasks(true);
+    setToast("DeepSeek is structuring the task plan…");
+    const result = await trackerRequest<TaskTrackerItem[]>("/api/task-tracker", {
+      method: "POST",
+      body: JSON.stringify({
+        input,
+        time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      }),
+    });
+    setParsingTasks(false);
+    if (!result.ok) {
+      setToast(result.error);
+      return;
+    }
+
+    const nextItems = [...trackerItems, ...result.data];
+    setTrackerItems(nextItems);
+    setTimeline(buildTimeline(nextItems));
+    setOpenTimelineId(result.data[0] ? `tracker-${result.data[0].id}` : null);
+    setTaskInput("");
+    setToast(
+      `${result.data.length} ${result.data.length === 1 ? "task" : "tasks"} added to the timeline`,
+    );
+  }
+
+  async function actionTrackerItem(item: TaskTrackerItem) {
+    setActioningTaskId(item.id);
+    setToast("Updating documentation…");
+    const result = await trackerRequest<{ item: TaskTrackerItem }>(
+      `/api/task-tracker/${item.id}/action`,
+      {
+        method: "POST",
+        body: JSON.stringify({ expected_lock_version: item.lock_version }),
+      },
+    );
+    setActioningTaskId(null);
+
+    const updated = result.ok ? result.data.item : result.data;
+    if (updated) {
+      setTrackerItems((current) =>
+        current.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
+      );
+      setTimeline((current) =>
+        current.map((candidate) =>
+          candidate.id === `tracker-${updated.id}`
+            ? trackerTimelineItem(updated)
+            : candidate,
+        ),
+      );
+    }
+    if (!result.ok) {
+      setToast(result.error);
+      return;
+    }
+    setToast("Documentation updated · roadmap task ready");
   }
 
   function createFeature() {
@@ -666,6 +777,9 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
   }
 
   const openTimeline = timeline.find((item) => item.id === openTimelineId) ?? null;
+  const openTracker = openTimelineId?.startsWith("tracker-")
+    ? trackerItems.find((item) => `tracker-${item.id}` === openTimelineId) ?? null
+    : null;
   const activePlans = new Set(
     bundle.workplans
       .filter((plan) => plan.feature_id === activeFeatureId)
@@ -860,8 +974,14 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
                 <Icon name="arrow-left" /> Timeline
               </button>
               <div className="detail-kicker">
-                {timelineLabel(granularity, timeline.indexOf(openTimeline))}
+                {trackerTimelineLabel(
+                  openTimeline,
+                  granularity,
+                  timeline.indexOf(openTimeline),
+                  today,
+                )}
                 <span className={`kind-dot ${openTimeline.kind}`} />
+                <span>{openTimeline.status}</span>
               </div>
               <h2>{openTimeline.title}</h2>
               <label className="note-label">
@@ -882,8 +1002,14 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
               <div className="context-card">
                 <Icon name="sparkle" />
                 <div>
-                  <strong>Context understood</strong>
-                  <p>Linked to the current project plan and visible agent activity.</p>
+                  <strong>
+                    {openTracker ? "Documentation update" : "Context understood"}
+                  </strong>
+                  <p>
+                    {openTracker
+                      ? openTracker.documentation_update
+                      : "Linked to the current project plan and visible agent activity."}
+                  </p>
                 </div>
               </div>
               <div className="detail-meta">
@@ -908,6 +1034,27 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
                   ))}
                 </div>
               </div>
+              {openTracker ? (
+                <button
+                  className="add-button task-action-button"
+                  disabled={
+                    actioningTaskId !== null ||
+                    openTracker.status === "actioned" ||
+                    openTracker.status === "cancelled"
+                  }
+                  onClick={() => void actionTrackerItem(openTracker)}
+                  type="button"
+                >
+                  <Icon name={openTracker.status === "actioned" ? "check" : "sparkle"} />
+                  {actioningTaskId === openTracker.id
+                    ? "Updating documentation…"
+                    : openTracker.status === "actioned"
+                      ? "Ready on roadmap"
+                      : openTracker.status === "failed"
+                        ? "Retry action"
+                        : "Action task"}
+                </button>
+              ) : null}
             </div>
           ) : (
             <>
@@ -916,10 +1063,31 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
                   <span className="eyebrow">Human plan</span>
                   <h2>Timeline</h2>
                 </div>
-                <button className="add-button" onClick={addTimelineItem} type="button">
+                <button
+                  className="add-button"
+                  onClick={() => taskInputRef.current?.focus()}
+                  type="button"
+                >
                   <Icon name="plus" /> Add
                 </button>
               </div>
+              <form className="timeline-capture" onSubmit={addTimelineItem}>
+                <input
+                  aria-label="Describe tasks"
+                  disabled={parsingTasks}
+                  onChange={(event) => setTaskInput(event.target.value)}
+                  placeholder="Describe a task, deadline, or client request…"
+                  ref={taskInputRef}
+                  value={taskInput}
+                />
+                <button
+                  aria-label="Plan tasks with DeepSeek"
+                  disabled={parsingTasks || taskInput.trim().length < 3}
+                  type="submit"
+                >
+                  <Icon name="sparkle" />
+                </button>
+              </form>
               <div className="priority-toggle-row">
                 <div>
                   <Icon name="sparkle" />
@@ -937,12 +1105,14 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
               <div className="timeline-scroll">
                 <div className="timeline-date">
                   <strong>{granularity === "hours" ? "Today" : granularity === "days" ? "This week" : "Q3"}</strong>
-                  <span>July 9, 2026</span>
+                  <span>{fullCalendarDate(today)}</span>
                 </div>
                 {orderedTimeline.map((item, index) => (
                   <div className="timeline-slot" key={item.id}>
                     <span className="time-label">
-                      {priorityMode ? `P${6 - item.priority}` : timelineLabel(granularity, index)}
+                      {priorityMode
+                        ? `P${6 - item.priority}`
+                        : trackerTimelineLabel(item, granularity, index, today)}
                     </span>
                     <span className="timeline-rule" />
                     <button
@@ -959,11 +1129,15 @@ export function SushicodeWorkspace({ bundle, documentationNodes }: WorkspaceProp
                     </button>
                   </div>
                 ))}
-                <button className="empty-slot" onClick={addTimelineItem} type="button">
+                <button
+                  className="empty-slot"
+                  onClick={() => taskInputRef.current?.focus()}
+                  type="button"
+                >
                   <span>{timelineLabel(granularity, orderedTimeline.length)}</span>
                   <span className="timeline-rule" />
                   <span className="empty-note">
-                    <Icon name="plus" /> Add a note
+                    <Icon name="plus" /> Add a task
                   </span>
                 </button>
               </div>

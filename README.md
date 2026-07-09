@@ -37,8 +37,11 @@ Set these Vercel project environment variables for Production and Preview:
 | `SB_URL` | same project URL |
 | `SB_PK` | same anon public key |
 | `NEXT_PUBLIC_PROJECT_SLUG` | `cursor-cto-hack` |
+| `ds_api` | server-side DeepSeek key used by the task tracker |
+| `DEEPSEEK_MODEL` | optional; defaults to `deepseek-chat` |
 
 `SB_PW` is not needed by the dashboard and should stay only in GitHub Actions.
+DeepSeek variables must not use the `NEXT_PUBLIC_` prefix.
 
 ---
 

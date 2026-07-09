@@ -1544,6 +1544,44 @@ a.button-quiet:hover {
   border-color: rgba(200, 255, 102, 0.3);
 }
 
+.timeline-capture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 31px;
+  gap: 6px;
+  margin: 0 10px 10px;
+}
+
+.timeline-capture input {
+  height: 31px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 5px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--workspace-text);
+  font-size: 9px;
+}
+
+.timeline-capture input::placeholder {
+  color: var(--workspace-dim);
+}
+
+.timeline-capture input:focus {
+  border-color: rgba(200, 255, 102, 0.36);
+  box-shadow: 0 0 0 2px rgba(200, 255, 102, 0.05);
+}
+
+.timeline-capture button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(200, 255, 102, 0.24);
+  border-radius: 5px;
+  background: rgba(200, 255, 102, 0.08);
+  color: var(--workspace-green);
+}
+
 .priority-toggle-row {
   display: flex;
   flex: 0 0 auto;
@@ -1905,6 +1943,13 @@ a.button-quiet:hover {
   margin-top: 22px;
   color: var(--workspace-muted);
   font-size: 9px;
+}
+
+.task-action-button {
+  width: 100%;
+  justify-content: center;
+  margin-top: 14px;
+  color: var(--workspace-green);
 }
 
 .priority-bars {
