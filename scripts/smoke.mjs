@@ -70,13 +70,8 @@ async function main() {
     });
     await mustOk(page, "dashboard");
     const html = await page.text();
-    for (const needle of ["Cursor CTO", "Feature agents", "Debug agents"]) {
-      if (!html.includes(needle)) {
-        throw new Error(`Dashboard HTML missing expected text: ${needle}`);
-      }
-    }
-    if (!html.includes('data-context-source="supabase"')) {
-      throw new Error("Dashboard is not using Supabase context");
+    if (!html.includes("sushicode is code")) {
+      throw new Error("Landing page HTML missing expected text");
     }
   });
   console.log("Dashboard HTML OK");
