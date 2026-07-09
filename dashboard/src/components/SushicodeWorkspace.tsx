@@ -945,7 +945,7 @@ export function SushicodeWorkspace({
   }
 
   function handleCanvasPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest(".ia-node")) return;
+    if ((event.target as HTMLElement).closest(".ia-node, .canvas-controls")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setPanDrag({
       pointerX: event.clientX,
