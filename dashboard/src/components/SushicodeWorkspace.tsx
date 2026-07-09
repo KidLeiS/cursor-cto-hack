@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -111,6 +112,7 @@ function Icon({
     | "grid"
     | "hide-left"
     | "hide-right"
+    | "microphone"
     | "more"
     | "move"
     | "note"
@@ -159,6 +161,12 @@ function Icon({
       <>
         <rect x="3" y="4" width="18" height="16" />
         <path d="M15 4v16M7 8l4 4-4 4" />
+      </>
+    ),
+    microphone: (
+      <>
+        <rect x="9" y="3" width="6" height="12" rx="3" />
+        <path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" />
       </>
     ),
     more: (
@@ -416,6 +424,9 @@ export function SushicodeWorkspace({
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [granularity, setGranularity] = useState<Granularity>("hours");
   const [priorityMode, setPriorityMode] = useState(false);
@@ -424,12 +435,27 @@ export function SushicodeWorkspace({
   const [openTimelineId, setOpenTimelineId] = useState<string | null>(null);
   const [taskInput, setTaskInput] = useState("");
   const [parsingTasks, setParsingTasks] = useState(false);
+  const [recordingTasks, setRecordingTasks] = useState(false);
+  const [transcribingTasks, setTranscribingTasks] = useState(false);
   const [actioningTaskId, setActioningTaskId] = useState<string | null>(null);
 
   const [features, setFeatures] = useState(bundle.features);
   const [steps, setSteps] = useState(bundle.steps);
   const [activeFeatureId, setActiveFeatureId] = useState<string | null>(null);
   const [showSuggestion, setShowSuggestion] = useState(true);
+
+  useEffect(
+    () => () => {
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        if (recorder.state !== "inactive") recorder.stop();
+        recorder.stream.getTracks().forEach((track) => track.stop());
+      }
+    },
+    [],
+  );
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, DocumentationNode[]>();
@@ -674,6 +700,116 @@ export function SushicodeWorkspace({
     const result = await uploadDocumentationImage(data);
     setToast(result.ok ? `${file.name} uploaded` : result.error);
     event.target.value = "";
+  }
+
+  async function transcribeTaskRecording(audio: Blob) {
+    if (audio.size === 0) {
+      setToast("No audio was captured. Try the microphone again.");
+      return;
+    }
+    if (audio.size > 4 * 1024 * 1024) {
+      setToast("The recording is too large. Keep task notes under one minute.");
+      return;
+    }
+
+    setTranscribingTasks(true);
+    setToast("Cloudflare is transcribing your task…");
+    const formData = new FormData();
+    formData.set(
+      "audio",
+      new File([audio], "task-recording", {
+        type: audio.type || "audio/webm",
+      }),
+    );
+    try {
+      const response = await fetch("/api/task-tracker/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const body = await response.json();
+      if (!response.ok || !body.ok || typeof body.data?.text !== "string") {
+        setToast(body.error || "The recording could not be transcribed.");
+        return;
+      }
+      const transcript = body.data.text.trim();
+      setTaskInput((current) =>
+        [current.trim(), transcript].filter(Boolean).join(" "),
+      );
+      setToast("Speech added to the task input");
+      requestAnimationFrame(() => taskInputRef.current?.focus());
+    } catch {
+      setToast("The transcription service could not be reached.");
+    } finally {
+      setTranscribingTasks(false);
+    }
+  }
+
+  async function toggleTaskRecording() {
+    const current = mediaRecorderRef.current;
+    if (current?.state === "recording") {
+      current.stop();
+      return;
+    }
+    if (transcribingTasks || parsingTasks) return;
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setToast("This browser does not support microphone recording.");
+      return;
+    }
+
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      const mimeType = [
+        "audio/webm;codecs=opus",
+        "audio/mp4;codecs=mp4a.40.2",
+        "audio/webm",
+        "audio/mp4",
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (recordingTimeoutRef.current) {
+          clearTimeout(recordingTimeoutRef.current);
+          recordingTimeoutRef.current = null;
+        }
+        recorder.stream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        setRecordingTasks(false);
+        const audio = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        audioChunksRef.current = [];
+        void transcribeTaskRecording(audio);
+      };
+      recorder.onerror = () => {
+        setToast("Microphone recording failed. Try again.");
+      };
+      recorder.start();
+      setRecordingTasks(true);
+      setToast("Listening… click the microphone to stop");
+      recordingTimeoutRef.current = setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 60_000);
+    } catch {
+      stream?.getTracks().forEach((track) => track.stop());
+      setToast("Microphone access was not granted.");
+    }
   }
 
   async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
@@ -1081,8 +1217,31 @@ export function SushicodeWorkspace({
                   value={taskInput}
                 />
                 <button
+                  aria-label={
+                    recordingTasks
+                      ? "Stop recording"
+                      : transcribingTasks
+                        ? "Transcribing recording"
+                        : "Speak task"
+                  }
+                  aria-pressed={recordingTasks}
+                  className={recordingTasks ? "task-mic-button recording" : "task-mic-button"}
+                  disabled={parsingTasks || transcribingTasks}
+                  onClick={() => void toggleTaskRecording()}
+                  title={recordingTasks ? "Stop recording" : "Speak task"}
+                  type="button"
+                >
+                  <Icon name="microphone" />
+                </button>
+                <button
                   aria-label="Plan tasks with DeepSeek"
-                  disabled={parsingTasks || taskInput.trim().length < 3}
+                  className="task-plan-button"
+                  disabled={
+                    parsingTasks ||
+                    recordingTasks ||
+                    transcribingTasks ||
+                    taskInput.trim().length < 3
+                  }
                   type="submit"
                 >
                   <Icon name="sparkle" />

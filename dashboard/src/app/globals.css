@@ -1546,7 +1546,7 @@ a.button-quiet:hover {
 
 .timeline-capture {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 31px;
+  grid-template-columns: minmax(0, 1fr) 31px 31px;
   gap: 6px;
   margin: 0 10px 10px;
 }
@@ -1580,6 +1580,19 @@ a.button-quiet:hover {
   border-radius: 5px;
   background: rgba(200, 255, 102, 0.08);
   color: var(--workspace-green);
+}
+
+.timeline-capture .task-mic-button {
+  border-color: var(--workspace-line);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--workspace-muted);
+}
+
+.timeline-capture .task-mic-button.recording {
+  border-color: rgba(255, 149, 92, 0.55);
+  background: rgba(255, 149, 92, 0.12);
+  color: var(--workspace-orange);
+  box-shadow: 0 0 0 2px rgba(255, 149, 92, 0.06);
 }
 
 .priority-toggle-row {

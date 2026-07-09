@@ -25,6 +25,20 @@ model output fails closed.
 Configure `ds_api` in Vercel. `DEEPSEEK_MODEL` is optional and defaults to
 `deepseek-chat`. The key is never sent to the browser.
 
+## Speech input
+
+The microphone beside the Timeline text input records at most 60 seconds in the
+browser. `POST /api/task-tracker/transcribe` accepts the recording as multipart
+form data, limits it to 4 MB, and sends base64 audio to Cloudflare Workers AI.
+The transcript is appended to the same text field; the user can review or edit
+it before sending it to DeepSeek.
+
+Speech recognition uses `@cf/openai/whisper-large-v3-turbo`. Cloudflare lists it
+as its best-accuracy multilingual transcription model, and it has the same
+per-minute price as the older Whisper model. Configure `CLOUDFLARE_ACCOUNT_ID`
+and `CLOUDFLARE_API_TOKEN` in Vercel. A custom token needs Workers AI Read and
+Workers AI Edit permissions.
+
 ## Persistence
 
 Migration `005_task_tracker.sql` creates `task_tracker_items`, priority and
@@ -63,4 +77,5 @@ contracts. Durable checkpoints make partial completion visible and recoverable.
 | --- | --- | --- |
 | `GET` | `/api/task-tracker` | List calendar items for the configured project |
 | `POST` | `/api/task-tracker` | Parse and persist one or more tasks |
+| `POST` | `/api/task-tracker/transcribe` | Convert a short recording into editable text |
 | `POST` | `/api/task-tracker/:id/action` | Update docs, then create roadmap work |

@@ -39,9 +39,11 @@ Set these Vercel project environment variables for Production and Preview:
 | `NEXT_PUBLIC_PROJECT_SLUG` | `cursor-cto-hack` |
 | `ds_api` | server-side DeepSeek key used by the task tracker |
 | `DEEPSEEK_MODEL` | optional; defaults to `deepseek-chat` |
+| `CLOUDFLARE_ACCOUNT_ID` | account that runs Workers AI speech recognition |
+| `CLOUDFLARE_API_TOKEN` | token with Workers AI Read + Edit permissions |
 
 `SB_PW` is not needed by the dashboard and should stay only in GitHub Actions.
-DeepSeek variables must not use the `NEXT_PUBLIC_` prefix.
+AI credentials must not use the `NEXT_PUBLIC_` prefix.
 
 ---
 
