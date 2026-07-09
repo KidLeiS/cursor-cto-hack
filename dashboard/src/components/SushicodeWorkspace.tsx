@@ -1217,23 +1217,6 @@ export function SushicodeWorkspace({
                   value={taskInput}
                 />
                 <button
-                  aria-label={
-                    recordingTasks
-                      ? "Stop recording"
-                      : transcribingTasks
-                        ? "Transcribing recording"
-                        : "Speak task"
-                  }
-                  aria-pressed={recordingTasks}
-                  className={recordingTasks ? "task-mic-button recording" : "task-mic-button"}
-                  disabled={parsingTasks || transcribingTasks}
-                  onClick={() => void toggleTaskRecording()}
-                  title={recordingTasks ? "Stop recording" : "Speak task"}
-                  type="button"
-                >
-                  <Icon name="microphone" />
-                </button>
-                <button
                   aria-label="Plan tasks with DeepSeek"
                   className="task-plan-button"
                   disabled={
@@ -1245,6 +1228,27 @@ export function SushicodeWorkspace({
                   type="submit"
                 >
                   <Icon name="sparkle" />
+                </button>
+                <button
+                  aria-label={
+                    recordingTasks
+                      ? "Stop recording"
+                      : transcribingTasks
+                        ? "Transcribing recording"
+                        : "Speak task"
+                  }
+                  aria-pressed={recordingTasks}
+                  className={
+                    recordingTasks
+                      ? "task-mic-button recording"
+                      : "task-mic-button"
+                  }
+                  disabled={parsingTasks || transcribingTasks}
+                  onClick={() => void toggleTaskRecording()}
+                  title={recordingTasks ? "Stop recording" : "Speak task"}
+                  type="button"
+                >
+                  <Icon name="microphone" />
                 </button>
               </form>
               <div className="priority-toggle-row">
