@@ -653,6 +653,11 @@ export function SushicodeWorkspace({
   const [timeline, setTimeline] = useState(() => buildTimeline(taskTrackerItems));
   const [openTimelineId, setOpenTimelineId] = useState<string | null>(null);
   const [attachedNoteId, setAttachedNoteId] = useState<string | null>(null);
+  const [floatingAttach, setFloatingAttach] = useState<{
+    itemId: string;
+    left: number;
+    top: number;
+  } | null>(null);
   const [taskInput, setTaskInput] = useState("");
   const [parsingTasks, setParsingTasks] = useState(false);
   const [recordingTasks, setRecordingTasks] = useState(false);
@@ -1483,6 +1488,7 @@ export function SushicodeWorkspace({
   }
 
   function attachNoteToPrompt(item: TimelineItem) {
+    setFloatingAttach(null);
     setAttachedNoteId(item.id);
     setOpenTimelineId(null);
     setLeftPanelMode("chat");
@@ -2606,7 +2612,10 @@ export function SushicodeWorkspace({
                     </div>
                     <span>{orderedTimeline.length}</span>
                   </div>
-                  <div className="notes-list">
+                  <div
+                    className="notes-list"
+                    onScroll={() => setFloatingAttach(null)}
+                  >
                     {orderedTimeline.map((item, index) => {
                       const tracker = item.id.startsWith("tracker-")
                         ? trackerItems.find(
@@ -2627,6 +2636,14 @@ export function SushicodeWorkspace({
                             : "notes-list-row"
                         }
                         key={item.id}
+                        onMouseEnter={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setFloatingAttach({
+                            itemId: item.id,
+                            left: rect.right + 10,
+                            top: rect.top + rect.height / 2,
+                          });
+                        }}
                         onDragOver={(event) => {
                           if (!draggedTaskId || !tracker) return;
                           event.preventDefault();
@@ -2693,13 +2710,6 @@ export function SushicodeWorkspace({
                           </span>
                           <p>{item.note}</p>
                         </button>
-                        <button
-                          className="attach-note-button"
-                          onClick={() => attachNoteToPrompt(item)}
-                          type="button"
-                        >
-                          <Icon name="plus" /> Attach to prompt
-                        </button>
                       </div>
                       );
                     })}
@@ -2709,6 +2719,23 @@ export function SushicodeWorkspace({
             </>
           )}
         </aside>
+      ) : null}
+
+      {floatingAttach && leftPanelMode === "notes" && !openTimeline ? (
+        <button
+          className="floating-attach-button"
+          onClick={() => {
+            const item = timeline.find(
+              (candidate) => candidate.id === floatingAttach.itemId,
+            );
+            if (item) attachNoteToPrompt(item);
+          }}
+          onMouseLeave={() => setFloatingAttach(null)}
+          style={{ left: floatingAttach.left, top: floatingAttach.top }}
+          type="button"
+        >
+          <Icon name="plus" /> Attach to prompt
+        </button>
       ) : null}
 
       {!hideRight ? (
