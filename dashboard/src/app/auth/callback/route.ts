@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { ALLOWED_EMAIL, createServerAuthClient } from "@/lib/auth";
+import { createServerAuthClient } from "@/lib/auth";
+import { ALLOWED_EMAIL } from "@/lib/auth-constants";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);

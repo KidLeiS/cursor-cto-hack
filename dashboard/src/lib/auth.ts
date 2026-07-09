@@ -2,8 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient, type User } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-
-export const ALLOWED_EMAIL = "eric@aimalcolm.com";
+import { ALLOWED_EMAIL } from "./auth-constants";
 
 function authEnvironment(): { url: string; anonKey: string } | null {
   const url = process.env.SB_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;

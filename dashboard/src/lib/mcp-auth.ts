@@ -4,7 +4,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { getSupabase } from "./data";
-import { ALLOWED_EMAIL } from "./auth";
+import { ALLOWED_EMAIL } from "./auth-constants";
 
 export type McpAuthContext = {
   keyId: string;

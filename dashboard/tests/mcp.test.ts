@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { POST } from "../src/app/api/mcp/route";
 
-const originalNodeEnv = process.env.NODE_ENV;
 const originalKey = process.env.MCP_TEST_API_KEY;
 const key = "test-mcp-key";
 
@@ -19,13 +18,10 @@ function request(method: string, params: Record<string, unknown> = {}, token = k
 
 describe("remote MCP endpoint", () => {
   before(() => {
-    process.env.NODE_ENV = "test";
     process.env.MCP_TEST_API_KEY = key;
   });
 
   after(() => {
-    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = originalNodeEnv;
     if (originalKey === undefined) delete process.env.MCP_TEST_API_KEY;
     else process.env.MCP_TEST_API_KEY = originalKey;
   });

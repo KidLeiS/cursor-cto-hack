@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ALLOWED_EMAIL, createPublicAuthClient } from "@/lib/auth";
+import { createPublicAuthClient } from "@/lib/auth";
+import { ALLOWED_EMAIL } from "@/lib/auth-constants";
 import { getSupabase } from "@/lib/data";
 
 const requestSchema = z.object({

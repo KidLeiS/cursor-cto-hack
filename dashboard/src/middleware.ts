@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { ALLOWED_EMAIL } from "@/lib/auth";
+import { ALLOWED_EMAIL } from "@/lib/auth-constants";
 
 const publicPaths = new Set([
   "/login",
