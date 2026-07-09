@@ -35,9 +35,8 @@ it before sending it to DeepSeek.
 
 Speech recognition uses `@cf/openai/whisper-large-v3-turbo`. Cloudflare lists it
 as its best-accuracy multilingual transcription model, and it has the same
-per-minute price as the older Whisper model. Configure `CLOUDFLARE_ACCOUNT_ID`
-and `CLOUDFLARE_API_TOKEN` in Vercel. A custom token needs Workers AI Read and
-Workers AI Edit permissions.
+per-minute price as the older Whisper model. Configure `CF_ACC` and `CF_API` in
+Vercel. A custom token needs Workers AI Read and Workers AI Edit permissions.
 
 ## Persistence
 

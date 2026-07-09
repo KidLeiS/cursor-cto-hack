@@ -23,11 +23,11 @@ export async function transcribeWithCloudflare(
     fetchImpl?: FetchLike;
   } = {},
 ): Promise<{ text: string; model: string }> {
-  const accountId = options.accountId ?? process.env.CLOUDFLARE_ACCOUNT_ID;
-  const apiToken = options.apiToken ?? process.env.CLOUDFLARE_API_TOKEN;
+  const accountId = options.accountId ?? process.env.CF_ACC;
+  const apiToken = options.apiToken ?? process.env.CF_API;
   if (!accountId || !apiToken) {
     throw new CloudflareTranscriptionError(
-      "Speech input is not configured. Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in Vercel.",
+      "Speech input is not configured. Set CF_ACC and CF_API in Vercel.",
       "not_configured",
     );
   }
