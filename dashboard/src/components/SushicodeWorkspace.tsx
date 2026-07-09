@@ -1251,25 +1251,33 @@ export function SushicodeWorkspace({
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       }),
     });
-    setParsingTasks(false);
     if (!result.ok) {
+      setParsingTasks(false);
       setToast(result.error);
+      return false;
+    }
+    if (result.data.length === 0) {
+      setParsingTasks(false);
+      setToast("DeepSeek did not return a task. Try describing the outcome more explicitly.");
       return false;
     }
 
     const nextItems = [...trackerItems, ...result.data];
     setTrackerItems(nextItems);
     setTimeline(buildTimeline(nextItems));
-    setOpenTimelineId(null);
     setTaskInput("");
-    setToast(
-      `${result.data.length} ${result.data.length === 1 ? "note" : "notes"} added`,
-    );
+    setToast("Creating the roadmap task…");
+    const roadmap = await actionTrackerItem(result.data[0]);
+    setParsingTasks(false);
+    if (!roadmap) {
+      setOpenTimelineId(`tracker-${result.data[0].id}`);
+      return true;
+    }
+    router.push(`/tasks/${roadmap.id}`);
     return true;
   }
 
-  async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitTimelinePrompt() {
     const prompt = attachedNote
       ? [
           `Attached note: ${attachedNote.title}`,
@@ -1278,6 +1286,11 @@ export function SushicodeWorkspace({
         ].join("\n\n")
       : taskInput;
     if (await submitTaskInput(prompt)) setAttachedNoteId(null);
+  }
+
+  async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitTimelinePrompt();
   }
 
   async function addStructuredTask(event: FormEvent<HTMLFormElement>) {
@@ -1311,7 +1324,7 @@ export function SushicodeWorkspace({
     window.setTimeout(() => taskInputRef.current?.focus(), 0);
   }
 
-  async function actionTrackerItem(item: TaskTrackerItem) {
+  async function actionTrackerItem(item: TaskTrackerItem): Promise<RoadmapTask | null> {
     setActioningTaskId(item.id);
     setToast("Updating documentation…");
     const result = await trackerRequest<{
@@ -1341,7 +1354,7 @@ export function SushicodeWorkspace({
     }
     if (!result.ok) {
       setToast(result.error);
-      return;
+      return null;
     }
     setRoadmapTasks((current) => {
       const roadmap = result.data.roadmap;
@@ -1352,6 +1365,7 @@ export function SushicodeWorkspace({
     setActiveRoadmapTaskId(result.data.roadmap.id);
     router.refresh();
     setToast("Documentation updated · roadmap task ready");
+    return result.data.roadmap;
   }
 
   async function createFeature(event: FormEvent<HTMLFormElement>) {
@@ -1992,6 +2006,18 @@ export function SushicodeWorkspace({
                       aria-label="Message Sushicode"
                       disabled={parsingTasks}
                       onChange={(event) => setTaskInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key !== "Enter" ||
+                          event.shiftKey ||
+                          event.nativeEvent.isComposing ||
+                          parsingTasks
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        if (taskInput.trim().length >= 3) void submitTimelinePrompt();
+                      }}
                       placeholder={
                         attachedNote
                           ? "What should I do with this note?"
@@ -2377,6 +2403,18 @@ export function SushicodeWorkspace({
                     onChange={(event) =>
                       setTaskDraft((current) => ({ ...current, details: event.target.value }))
                     }
+                    onKeyDown={(event) => {
+                      if (
+                        event.key !== "Enter" ||
+                        event.shiftKey ||
+                        event.nativeEvent.isComposing ||
+                        parsingTasks
+                      ) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.currentTarget.form?.requestSubmit();
+                    }}
                     placeholder="Add decisions, constraints, or desired outcome…"
                     rows={4}
                     value={taskDraft.details}

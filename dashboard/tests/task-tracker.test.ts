@@ -136,7 +136,10 @@ describe("DeepSeek task parser", () => {
     assert.equal(result.tasks[0].priority, "high");
     assert.equal(requestBody?.model, "deepseek-chat");
     assert.deepEqual(requestBody?.response_format, { type: "json_object" });
-    assert.match(JSON.stringify(requestBody?.messages), /2026-07-09/);
+    const messages = JSON.stringify(requestBody?.messages);
+    assert.match(messages, /2026-07-09/);
+    assert.match(messages, /exactly one implementation-ready roadmap task/);
+    assert.match(messages, /do not split it into multiple tasks/);
   });
 
   it("fails closed when provider output is outside the schema", async () => {
