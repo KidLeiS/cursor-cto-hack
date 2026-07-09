@@ -17,6 +17,7 @@ export type RoadmapActionResult<T = undefined> =
     };
 
 function refreshRoadmap(): void {
+  revalidatePath("/");
   revalidatePath("/tasks");
 }
 

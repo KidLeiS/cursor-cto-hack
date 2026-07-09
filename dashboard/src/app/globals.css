@@ -299,6 +299,16 @@ section .hint {
   background: rgba(10, 15, 12, 0.58);
 }
 
+.dag-editor-status {
+  max-width: min(430px, calc(100% - 2rem));
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--line);
+  background: rgba(15, 20, 18, 0.9);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
 .react-flow__node.dag-node {
   width: 260px;
   border: 1px solid rgba(196, 240, 130, 0.32);
@@ -2184,6 +2194,76 @@ a.button-quiet:hover {
   font-family: var(--font-mono);
   font-size: 8px;
   font-weight: 400;
+}
+
+.roadmap-card-meta,
+.roadmap-estimate {
+  color: var(--workspace-dim);
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+}
+
+.roadmap-card-meta {
+  display: block;
+  margin-top: 8px;
+}
+
+.roadmap-estimate {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.roadmap-contract {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 11px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.roadmap-contract summary {
+  cursor: pointer;
+  color: var(--workspace-text);
+  font-size: 10px;
+  font-weight: 560;
+}
+
+.roadmap-contract > div {
+  display: grid;
+  gap: 3px;
+}
+
+.roadmap-contract strong {
+  color: var(--workspace-dim);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.roadmap-contract p {
+  margin: 0;
+  color: var(--workspace-muted);
+  font-size: 8.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.roadmap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.roadmap-actions .button-quiet {
+  height: 29px;
+  padding: 0 9px;
+  border-radius: 5px;
+  font-size: 9px;
 }
 
 .new-feature {

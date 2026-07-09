@@ -82,8 +82,8 @@ export default async function TaskDetailPage({
       <section>
         <h2>Subtask DAG</h2>
         <p className="hint">
-          Arrows run from prerequisite to dependent task. Pan or zoom to inspect
-          the plan.
+          Arrows run from prerequisite to dependent task. Drag between handles
+          to add an edge; select an edge and press Delete to remove it.
         </p>
         <TaskDag tasks={graph.tasks} dependencies={graph.dependencies} />
       </section>
