@@ -37,13 +37,16 @@ Set these Vercel project environment variables for Production and Preview:
 | `SB_URL` | same project URL |
 | `SB_PK` | same anon public key |
 | `NEXT_PUBLIC_PROJECT_SLUG` | `cursor-cto-hack` |
-| `ds_api` | server-side DeepSeek key used by the task tracker |
+| `DS_API` / `ds_api` | server-side DeepSeek key used by the task tracker |
 | `DEEPSEEK_MODEL` | optional; defaults to `deepseek-chat` |
 | `CF_ACC` | Cloudflare account that runs Workers AI speech recognition |
 | `CF_API` | Cloudflare token with Workers AI Read + Edit permissions |
+| `MCP_API_KEY` | strong shared secret for remote agent read/write access |
 
 `SB_PW` is not needed by the dashboard and should stay only in GitHub Actions.
-AI credentials must not use the `NEXT_PUBLIC_` prefix.
+DeepSeek, Cloudflare, and MCP variables must not use the `NEXT_PUBLIC_` prefix.
+`MCP_API_KEY` must also remain server-side. See the
+[remote MCP setup guide](docs/remote-mcp.md) for Vercel and Cursor configuration.
 
 ---
 
@@ -64,7 +67,7 @@ Workflows: [CI](.github/workflows/ci.yml) and [production smoke](.github/workflo
 2. Import `KidLeiS/cursor-cto-hack`
 3. Set **Root Directory** to `dashboard`
 4. Framework preset: **Next.js**
-5. Add the three Vercel variables above for Production + Preview
+5. Add the Vercel variables above for Production + Preview
 6. Deploy
 
 Vercel then deploys every push itself and reports the deployment URL back to GitHub. No `VERCEL_TOKEN`, org ID, project ID, or deployment CLI is required.

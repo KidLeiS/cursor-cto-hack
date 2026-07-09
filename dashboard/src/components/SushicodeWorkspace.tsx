@@ -37,6 +37,7 @@ import type {
   DocumentationAsset,
   DocumentationNode,
   RoadmapTask,
+  RoadmapTaskDependency,
   TaskTrackerItem,
   TaskTrackerPriority,
 } from "../../../shared/types";
@@ -430,14 +431,110 @@ function trackerTimelineItem(item: TaskTrackerItem): TimelineItem {
   };
 }
 
+function timelineDemoDate(offsetDays: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function demoTimelineItems(): TimelineItem[] {
+  return [
+    {
+      id: "demo-hour-ia-review",
+      title: "Review IA branch labels",
+      note: "Check that each canvas branch uses the same language as the user story.",
+      priority: 5,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(0),
+    },
+    {
+      id: "demo-hour-agent-handoff",
+      title: "Write agent handoff note",
+      note: "Capture the next prompt for turning notes into execution-ready work.",
+      priority: 4,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(0),
+    },
+    {
+      id: "demo-hour-ui-pass",
+      title: "Polish canvas interactions",
+      note: "Verify click-to-edit, delete guardrails, and sorted layout behavior.",
+      priority: 3,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(0),
+    },
+    {
+      id: "demo-day-roadmap-sync",
+      title: "Sync roadmap tasks",
+      note: "Connect the human notes to roadmap tasks and confirm the execution queue.",
+      priority: 4,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(1),
+    },
+    {
+      id: "demo-day-design-review",
+      title: "Design review checkpoint",
+      note: "Review panel density, light mode contrast, and note attachment flow.",
+      priority: 3,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(2),
+    },
+    {
+      id: "demo-day-client-update",
+      title: "Prepare client update",
+      note: "Summarize what changed in IA, timeline, and execution progress.",
+      priority: 2,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(3),
+    },
+    {
+      id: "demo-week-infra-plan",
+      title: "Plan persistence polish",
+      note: "Identify what note metadata needs first-class backend persistence.",
+      priority: 3,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(7),
+    },
+    {
+      id: "demo-week-agent-metrics",
+      title: "Agent progress metrics",
+      note: "Define how progress bars should reflect actual swarm execution.",
+      priority: 2,
+      kind: "task",
+      status: "demo",
+      scheduledFor: timelineDemoDate(14),
+    },
+    {
+      id: "demo-week-launch-story",
+      title: "Launch narrative",
+      note: "Turn the workspace flow into a crisp demo story for the hackathon.",
+      priority: 5,
+      kind: "note",
+      status: "demo",
+      scheduledFor: timelineDemoDate(21),
+    },
+  ];
+}
+
 function buildTimeline(items: TaskTrackerItem[]): TimelineItem[] {
-  return [...items]
+  const trackerItems = [...items]
     .sort(
       (a, b) =>
         a.scheduled_for.localeCompare(b.scheduled_for) ||
         TRACKER_PRIORITY[b.priority] - TRACKER_PRIORITY[a.priority],
     )
     .map(trackerTimelineItem);
+  return [...trackerItems, ...demoTimelineItems()];
 }
 
 function findRoadmapNode(
@@ -530,6 +627,7 @@ export function SushicodeWorkspace({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressNodeClickRef = useRef(false);
   const [nodeMenuId, setNodeMenuId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [workspaceModal, setWorkspaceModal] = useState<WorkspaceModal>(null);
@@ -544,6 +642,9 @@ export function SushicodeWorkspace({
   const [editorMarkdown, setEditorMarkdown] = useState("");
   const [editorAssets, setEditorAssets] = useState<WorkspaceAsset[]>([]);
   const [editorBusy, setEditorBusy] = useState(false);
+  const [showMcpSetup, setShowMcpSetup] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const syncEtag = useRef("");
 
   const [granularity, setGranularity] = useState<Granularity>("hours");
   const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>("chat");
@@ -573,7 +674,9 @@ export function SushicodeWorkspace({
   });
 
   const [roadmapTasks, setRoadmapTasks] = useState(roadmapBundle.tasks);
-  const [roadmapDependencies] = useState(roadmapBundle.dependencies);
+  const [roadmapDependencies, setRoadmapDependencies] = useState(
+    roadmapBundle.dependencies,
+  );
   const [activeRoadmapTaskId, setActiveRoadmapTaskId] = useState<string | null>(
     null,
   );
@@ -673,6 +776,85 @@ export function SushicodeWorkspace({
     return () => controller.abort();
   }, [backendEnabled, editorNode?.id, editorNode?.content_version]);
 
+  useEffect(() => {
+    if (!backendEnabled) return;
+    let stopped = false;
+    let controller: AbortController | null = null;
+
+    async function syncWorkspace() {
+      if (
+        stopped ||
+        document.hidden ||
+        editorNodeId ||
+        editorBusy ||
+        drag ||
+        resize ||
+        movingId ||
+        updatingRoadmapTaskId
+      ) {
+        return;
+      }
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const response = await fetch("/api/workspace/sync", {
+          cache: "no-store",
+          headers: syncEtag.current ? { "If-None-Match": syncEtag.current } : {},
+          signal: controller.signal,
+        });
+        if (response.status === 304) {
+          setLastSyncedAt(new Date());
+          return;
+        }
+        if (!response.ok) return;
+        const body = (await response.json()) as {
+          ok: boolean;
+          documents: DocumentationNode[];
+          roadmap: {
+            tasks: RoadmapTask[];
+            dependencies: RoadmapTaskDependency[];
+          };
+          synced_at: string;
+        };
+        if (!body.ok || stopped) return;
+        syncEtag.current = response.headers.get("etag") ?? "";
+        setNodes(body.documents);
+        setPositions(initialPositions(body.documents));
+        setRoadmapTasks(body.roadmap.tasks);
+        setRoadmapDependencies(body.roadmap.dependencies);
+        setSelectedId((current) =>
+          current && body.documents.some((node) => node.id === current)
+            ? current
+            : body.documents[0]?.id ?? null,
+        );
+        setActiveRoadmapTaskId((current) =>
+          current && body.roadmap.tasks.some((task) => task.id === current)
+            ? current
+            : null,
+        );
+        setLastSyncedAt(new Date(body.synced_at));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+
+    void syncWorkspace();
+    const interval = window.setInterval(() => void syncWorkspace(), 2_000);
+    return () => {
+      stopped = true;
+      controller?.abort();
+      window.clearInterval(interval);
+    };
+  }, [
+    backendEnabled,
+    drag,
+    editorBusy,
+    editorNodeId,
+    movingId,
+    resize,
+    updatingRoadmapTaskId,
+  ]);
+
   async function persistNodeMove(
     node: DocumentationNode,
     point: Point,
@@ -705,6 +887,10 @@ export function SushicodeWorkspace({
   }
 
   function selectNode(node: DocumentationNode) {
+    if (suppressNodeClickRef.current) {
+      suppressNodeClickRef.current = false;
+      return;
+    }
     if (movingId && movingId !== node.id) {
       const moving = nodes.find((item) => item.id === movingId);
       if (moving) {
@@ -733,6 +919,7 @@ export function SushicodeWorkspace({
     if ((childrenByParent.get(node.id) ?? []).length) {
       setExpanded((current) => new Set(current).add(node.id));
     }
+    setEditorNodeId(node.id);
   }
 
   function toggleNode(nodeId: string) {
@@ -770,6 +957,10 @@ export function SushicodeWorkspace({
 
   function handleNodePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     if (!drag) return;
+    const moved =
+      Math.abs(event.clientX - drag.pointerX) > 4 ||
+      Math.abs(event.clientY - drag.pointerY) > 4;
+    suppressNodeClickRef.current = moved;
     const next = {
       x: Math.round(drag.origin.x + (event.clientX - drag.pointerX) / zoom),
       y: Math.round(drag.origin.y + (event.clientY - drag.pointerY) / zoom),
@@ -786,8 +977,44 @@ export function SushicodeWorkspace({
     }
   }
 
+  function sortCanvasLayout() {
+    const nextPositions: Record<string, Point> = {};
+    const expandedIds = new Set<string>();
+    let row = 0;
+
+    const place = (node: DocumentationNode, depth: number) => {
+      const size = nodeSize(node);
+      nextPositions[node.id] = {
+        x: 160 + depth * 390,
+        y: 120 + row * 220,
+      };
+      row += Math.max(1, Math.ceil(size.height / 170));
+      const children = childrenByParent.get(node.id) ?? [];
+      if (children.length) expandedIds.add(node.id);
+      for (const child of children) place(child, depth + 1);
+    };
+
+    for (const root of childrenByParent.get(null) ?? []) place(root, 0);
+    setPositions((current) => ({ ...current, ...nextPositions }));
+    setExpanded(expandedIds);
+    setPan({ x: 250, y: 24 });
+    setZoom(0.82);
+    setToast("Canvas sorted into clean layers");
+
+    if (backendEnabled) {
+      void (async () => {
+        for (const node of nodes) {
+          const point = nextPositions[node.id];
+          if (point && !node.id.startsWith("demo-")) {
+            await persistNodeMove(node, point);
+          }
+        }
+      })();
+    }
+  }
+
   function handleCanvasPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest(".ia-node")) return;
+    if ((event.target as HTMLElement).closest(".ia-node, .canvas-controls")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setPanDrag({
       pointerX: event.clientX,
@@ -1639,6 +1866,10 @@ export function SushicodeWorkspace({
   useEffect(() => {
     setTrackerEditDraft(openTracker ? taskDraftFrom(openTracker) : null);
   }, [openTracker?.id, openTracker?.lock_version]);
+  const mcpUrl =
+    typeof window === "undefined"
+      ? "https://YOUR-VERCEL-DOMAIN/api/mcp"
+      : `${window.location.origin}/api/mcp`;
   return (
     <main className="workspace-shell">
       <span className="sr-only">sushicode is code</span>
@@ -1657,9 +1888,22 @@ export function SushicodeWorkspace({
         </div>
         <div className="topbar-center">
           <span className="live-dot" />
-          IA synced now
+          {lastSyncedAt
+            ? `Docs + roadmap synced ${lastSyncedAt.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}`
+            : "Docs + roadmap live"}
         </div>
         <div className="topbar-actions">
+          <button
+            className="mcp-connect-button"
+            onClick={() => setShowMcpSetup(true)}
+            type="button"
+          >
+            Connect MCP
+          </button>
           <button
             aria-label={hideLeft ? "Show timeline" : "Hide timeline"}
             className={hideLeft ? "icon-button active" : "icon-button"}
@@ -1874,6 +2118,14 @@ export function SushicodeWorkspace({
             type="button"
           >
             <Icon name="grid" />
+          </button>
+          <button
+            aria-label="Sort canvas into layers"
+            className="sort-canvas-button"
+            onClick={sortCanvasLayout}
+            type="button"
+          >
+            Sort
           </button>
         </div>
       </div>
@@ -2912,6 +3164,81 @@ export function SushicodeWorkspace({
               </footer>
             </form>
           ) : null}
+        </div>
+      ) : null}
+
+      {showMcpSetup ? (
+        <div className="wireframe-editor-backdrop" role="presentation">
+          <section
+            aria-label="Connect an agent with MCP"
+            aria-modal="true"
+            className="mcp-setup"
+            role="dialog"
+          >
+            <header className="wireframe-editor-header">
+              <div>
+                <span className="eyebrow">Agent access</span>
+                <strong>Connect Sushicode MCP</strong>
+              </div>
+              <button
+                aria-label="Close MCP setup"
+                className="icon-button"
+                onClick={() => setShowMcpSetup(false)}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="mcp-setup-body">
+              <p>
+                This remote MCP lets agents read and edit documentation and roadmap
+                tasks. Writes use optimistic lock versions to prevent accidental
+                overwrites.
+              </p>
+              <ol>
+                <li>Add a secret named <code>MCP_API_KEY</code> in Vercel.</li>
+                <li>Redeploy, then add this server in Cursor’s MCP settings.</li>
+                <li>Replace <code>YOUR_MCP_API_KEY</code> with the same secret.</li>
+              </ol>
+              <label>
+                Remote server URL
+                <div className="mcp-copy-row">
+                  <code>{mcpUrl}</code>
+                  <button
+                    onClick={() => {
+                      void navigator.clipboard.writeText(mcpUrl);
+                      setToast("MCP URL copied");
+                    }}
+                    type="button"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </label>
+              <label>
+                Cursor <code>mcp.json</code>
+                <pre>{JSON.stringify(
+                  {
+                    mcpServers: {
+                      sushicode: {
+                        url: mcpUrl,
+                        headers: {
+                          Authorization: "Bearer YOUR_MCP_API_KEY",
+                          "MCP-Protocol-Version": "2025-11-25",
+                        },
+                      },
+                    },
+                  },
+                  null,
+                  2,
+                )}</pre>
+              </label>
+              <p className="mcp-security-note">
+                Treat this key like a password: connected agents can modify project
+                content.
+              </p>
+            </div>
+          </section>
         </div>
       ) : null}
 
