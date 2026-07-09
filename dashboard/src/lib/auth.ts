@@ -56,6 +56,7 @@ export async function requireAllowedUser(): Promise<User> {
 export async function requireApiUser(): Promise<NextResponse | null> {
   if (
     process.env.NODE_ENV === "test" &&
+    !process.env.VERCEL_ENV &&
     process.env.AUTH_TEST_USER === "allowed"
   ) {
     return null;

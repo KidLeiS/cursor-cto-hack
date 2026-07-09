@@ -33,6 +33,7 @@ export async function authenticateMcpKey(
     : "";
   if (
     process.env.NODE_ENV === "test" &&
+    !process.env.VERCEL_ENV &&
     process.env.MCP_TEST_API_KEY &&
     safeEqual(token, process.env.MCP_TEST_API_KEY)
   ) {

@@ -49,7 +49,8 @@ audit events without recording arguments or secrets.
 
 1. Add the required Vercel variables.
 2. Merge and let CI apply migration `008_auth_waitlist_security.sql`.
-3. Redeploy Vercel after environment changes.
+3. Vercel production builds wait for an anonymous RLS-denial probe before
+   promotion, preventing deployment ahead of the migration.
 4. Sign in as `eric@aimalcolm.com`.
 5. Generate a new personal MCP key. Shared `MCP_API_KEY` values are no longer
    accepted.

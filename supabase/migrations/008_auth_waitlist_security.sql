@@ -1,6 +1,8 @@
 -- Production access boundary: one approved user, waitlist-only signup,
 -- project membership RLS, and per-user MCP credentials.
 
+begin;
+
 create table if not exists public.waitlist_entries (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
@@ -329,3 +331,5 @@ grant all on table public.mcp_api_keys to service_role;
 grant all on table public.mcp_audit_events to service_role;
 grant all on table public.auth_request_attempts to service_role;
 grant usage, select on all sequences in schema public to service_role;
+
+commit;
