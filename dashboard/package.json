@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",
+    "@xyflow/react": "^12.11.2",
     "next": "15.5.20",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20",

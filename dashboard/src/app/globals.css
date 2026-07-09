@@ -1,3 +1,5 @@
+@import "@xyflow/react/dist/style.css";
+
 :root {
   --bg0: #0f1412;
   --bg1: #17201c;
@@ -47,6 +49,20 @@ main {
   width: min(1120px, calc(100% - 2rem));
   margin: 0 auto;
   padding: 2.5rem 0 4rem;
+}
+
+.landing {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .hero {
@@ -202,6 +218,14 @@ section .hint {
   font-weight: 600;
 }
 
+.task-heading {
+  align-items: center;
+}
+
+.task-heading .brand {
+  flex: 1;
+}
+
 .muted {
   color: var(--muted);
   font-size: 0.9rem;
@@ -211,6 +235,162 @@ section .hint {
 .mono {
   font-family: var(--font-mono);
   font-size: 0.8rem;
+}
+
+.task-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.task-row {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.task-row p {
+  margin: 0;
+}
+
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  color: var(--muted);
+}
+
+.progress-wrap {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.progress-label strong {
+  color: var(--ink);
+}
+
+.progress-track {
+  height: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bg0);
+}
+
+.progress-value {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7bb85d, var(--accent));
+}
+
+.task-dag {
+  height: min(68vh, 650px);
+  min-height: 420px;
+  border: 1px solid var(--line);
+  background: rgba(10, 15, 12, 0.58);
+}
+
+.react-flow__node.dag-node {
+  width: 260px;
+  border: 1px solid rgba(196, 240, 130, 0.32);
+  border-radius: 0;
+  background: var(--bg2);
+  color: var(--ink);
+  padding: 0;
+  text-align: left;
+}
+
+.react-flow__node.dag-node.done {
+  border-color: rgba(125, 255, 179, 0.45);
+}
+
+.react-flow__node.dag-node.blocked {
+  border-color: rgba(255, 125, 125, 0.55);
+}
+
+.dag-node-content {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem;
+}
+
+.dag-node-content strong {
+  font-size: 0.95rem;
+}
+
+.dag-node-content span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.react-flow__controls-button {
+  border-radius: 0;
+  border-color: var(--line);
+  background: var(--bg2);
+  fill: var(--ink);
+}
+
+.instructions-section {
+  margin-top: 2rem;
+}
+
+.instruction-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 800px) {
+  .instruction-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.instruction-card {
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.instruction-list {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+}
+
+.instruction-list div {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.instruction-list dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.instruction-list dd {
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .workplan {
@@ -274,6 +454,19 @@ button {
   font-size: 0.9rem;
   padding: 0.55rem 0.9rem;
   cursor: pointer;
+}
+
+.button-link {
+  display: inline-flex;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+}
+
+.button-link:hover {
+  text-decoration: none;
+  filter: brightness(1.05);
 }
 
 button:disabled {
