@@ -39,6 +39,7 @@ export function DocumentationEditor({
   const [revisions, setRevisions] = useState<DocumentationRevision[]>([]);
 
   useEffect(() => {
+    const controller = new AbortController();
     setEditing(false);
     setSourceMode(false);
     setTitle(document?.title ?? "");
@@ -47,16 +48,17 @@ export function DocumentationEditor({
     setRevisions([]);
 
     if (document) {
-      fetch(`/api/docs/${document.id}`)
+      fetch(`/api/docs/${document.id}`, { signal: controller.signal })
         .then((response) => response.json())
         .then((result) => {
-          if (result.ok) setRevisions(result.revisions);
+          if (result.ok && !controller.signal.aborted) setRevisions(result.revisions);
         })
         .catch(() => {
           // History is supplementary; editing remains available if it cannot load.
         });
     }
-  }, [document?.id, document?.lock_version]);
+    return () => controller.abort();
+  }, [document?.id, document?.content_version]);
 
   const blockedParentIds = useMemo(() => {
     if (!document) return new Set<string>();
@@ -87,6 +89,14 @@ export function DocumentationEditor({
     if (saved) setEditing(false);
   }
 
+  function cancel() {
+    setTitle(document!.title);
+    setSlug(document!.slug);
+    setMarkdown(document!.markdown);
+    setSourceMode(false);
+    setEditing(false);
+  }
+
   return (
     <aside className="docs-inspector">
       <header className="docs-inspector-header">
@@ -102,7 +112,7 @@ export function DocumentationEditor({
               <button className="button-quiet" onClick={() => setSourceMode(!sourceMode)}>
                 {sourceMode ? "Visual" : "Markdown"}
               </button>
-              <button className="button-quiet" onClick={() => setEditing(false)}>
+              <button className="button-quiet" onClick={cancel}>
                 Cancel
               </button>
               <button onClick={save} disabled={busy}>
@@ -115,7 +125,15 @@ export function DocumentationEditor({
         </div>
       </header>
 
-      {message ? <p className={`docs-message ${message.kind}`}>{message.text}</p> : null}
+      {message ? (
+        <p
+          className={`docs-message ${message.kind}`}
+          role={message.kind === "error" ? "alert" : "status"}
+          aria-live="polite"
+        >
+          {message.text}
+        </p>
+      ) : null}
 
       {editing ? (
         <div className="docs-edit-fields">
@@ -167,9 +185,16 @@ export function DocumentationEditor({
           </p>
         </div>
       ) : (
-        <button
+        <div
           className="docs-preview"
-          onClick={() => setEditing(true)}
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            if (!(event.target as HTMLElement).closest("a")) setEditing(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") setEditing(true);
+          }}
           aria-label={`Edit ${document.title}`}
         >
           <div className="docs-markdown">
@@ -178,7 +203,7 @@ export function DocumentationEditor({
             </ReactMarkdown>
           </div>
           <span className="docs-preview-hint">Click to edit</span>
-        </button>
+        </div>
       )}
 
       <footer className="docs-inspector-footer">

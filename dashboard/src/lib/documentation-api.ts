@@ -20,6 +20,11 @@ export async function readJson<T>(
   request: Request,
   schema: z.ZodType<T>,
 ): Promise<{ data: T } | { response: NextResponse }> {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > 600_000) {
+    return { response: apiJson({ ok: false, error: "Request body is too large." }, 413) };
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -46,15 +51,24 @@ export async function readJson<T>(
   return { data: parsed.data };
 }
 
-const slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+export const documentationIdSchema = z.uuid();
+const slug = z
+  .string()
+  .max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const finite = z.number().finite();
 const nullablePositive = z.number().positive().finite().nullable();
+const canvasMetadata = z
+  .record(z.string().max(80), z.unknown())
+  .refine((value) => JSON.stringify(value).length <= 10_000, {
+    message: "Canvas metadata must be 10 KB or smaller.",
+  });
 
 export const createNodeSchema = z.object({
-  parent_id: z.uuid().nullable().optional(),
+  parent_id: documentationIdSchema.nullable().optional(),
   slug,
   title: z.string().trim().min(1).max(160),
-  markdown: z.string().max(2_000_000).optional(),
+  markdown: z.string().max(500_000).optional(),
   sort_order: z.number().int().min(0).optional(),
   canvas_x: finite.optional(),
   canvas_y: finite.optional(),
@@ -66,18 +80,18 @@ export const updateNodeSchema = z.discriminatedUnion("operation", [
     expected_lock_version: z.number().int().positive(),
     slug,
     title: z.string().trim().min(1).max(160),
-    markdown: z.string().max(2_000_000),
+    markdown: z.string().max(500_000),
   }),
   z.object({
     operation: z.literal("move"),
     expected_lock_version: z.number().int().positive(),
-    parent_id: z.uuid().nullable(),
+    parent_id: documentationIdSchema.nullable(),
     sort_order: z.number().int().min(0),
     canvas_x: finite,
     canvas_y: finite,
     canvas_width: nullablePositive,
     canvas_height: nullablePositive,
-    canvas_metadata: z.record(z.string(), z.unknown()),
+    canvas_metadata: canvasMetadata,
   }),
   z.object({
     operation: z.literal("restore"),

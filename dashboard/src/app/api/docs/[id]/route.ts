@@ -8,6 +8,7 @@ import {
   actionStatus,
   apiJson,
   apiOptions,
+  documentationIdSchema,
   readJson,
   updateNodeSchema,
 } from "@/lib/documentation-api";
@@ -25,6 +26,9 @@ type Context = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, context: Context) {
   const { id } = await context.params;
+  if (!documentationIdSchema.safeParse(id).success) {
+    return apiJson({ ok: false, error: "Document ID must be a UUID." }, 422);
+  }
   const project = await loadDocumentationProject();
   if (!project) return apiJson({ ok: false, error: "Documentation is not configured." }, 503);
 
@@ -41,8 +45,18 @@ export async function GET(_request: Request, context: Context) {
 
 export async function PATCH(request: Request, context: Context) {
   const { id } = await context.params;
+  if (!documentationIdSchema.safeParse(id).success) {
+    return apiJson({ ok: false, error: "Document ID must be a UUID." }, 422);
+  }
   const parsed = await readJson(request, updateNodeSchema);
   if ("response" in parsed) return parsed.response;
+
+  const project = await loadDocumentationProject();
+  if (!project) return apiJson({ ok: false, error: "Documentation is not configured." }, 503);
+  const projectNodes = await loadDocumentationNodes(project.id);
+  if (!projectNodes.some((node) => node.id === id)) {
+    return apiJson({ ok: false, error: "Document was not found." }, 404);
+  }
 
   const input = parsed.data;
   let result;
@@ -79,9 +93,19 @@ export async function PATCH(request: Request, context: Context) {
 
 export async function DELETE(request: Request, context: Context) {
   const { id } = await context.params;
+  if (!documentationIdSchema.safeParse(id).success) {
+    return apiJson({ ok: false, error: "Document ID must be a UUID." }, 422);
+  }
   const version = Number(new URL(request.url).searchParams.get("lock_version"));
   if (!Number.isInteger(version) || version < 1) {
     return apiJson({ ok: false, error: "A positive lock_version query parameter is required." }, 422);
+  }
+
+  const project = await loadDocumentationProject();
+  if (!project) return apiJson({ ok: false, error: "Documentation is not configured." }, 503);
+  const projectNodes = await loadDocumentationNodes(project.id);
+  if (!projectNodes.some((node) => node.id === id)) {
+    return apiJson({ ok: false, error: "Document was not found." }, 404);
   }
 
   const result = await deleteDocumentationNode({ id, expected_lock_version: version });

@@ -16,21 +16,28 @@ async function apiRequest<T>(
   url: string,
   init?: RequestInit,
 ): Promise<ApiResult<T>> {
-  const response = await fetch(url, {
-    ...init,
-    headers: init?.body instanceof FormData
-      ? init.headers
-      : { "Content-Type": "application/json", ...init?.headers },
-  });
-  const result = await response.json();
-  if (!response.ok || !result.ok) {
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: init?.body instanceof FormData
+        ? init.headers
+        : { "Content-Type": "application/json", ...init?.headers },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      return {
+        ok: false,
+        error: result.error || `Request failed (${response.status}).`,
+        code: result.code,
+      };
+    }
+    return result;
+  } catch {
     return {
       ok: false,
-      error: result.error || `Request failed (${response.status}).`,
-      code: result.code,
+      error: "The documentation service could not be reached. Try again.",
     };
   }
-  return result;
 }
 
 function outlineRows(documents: DocumentationNode[]) {
@@ -238,6 +245,7 @@ export function DocumentationWorkspace({
                 className={document.id === selectedId ? "active" : ""}
                 style={{ paddingLeft: `${0.75 + depth * 0.85}rem` }}
                 onClick={() => setSelectedId(document.id)}
+                aria-current={document.id === selectedId ? "page" : undefined}
               >
                 {document.title}
               </button>
@@ -251,6 +259,7 @@ export function DocumentationWorkspace({
               documents={documents}
               selectedId={selectedId}
               resetKey={resetKey}
+              disabled={busy}
               onSelect={setSelectedId}
               onMove={moveDocument}
             />

@@ -68,12 +68,14 @@ function Canvas({
   documents,
   selectedId,
   resetKey,
+  disabled,
   onSelect,
   onMove,
 }: {
   documents: DocumentationNode[];
   selectedId: string | null;
   resetKey: number;
+  disabled: boolean;
   onSelect: (id: string) => void;
   onMove: (document: DocumentationNode, x: number, y: number) => void;
 }) {
@@ -119,6 +121,7 @@ function Canvas({
       minZoom={0.18}
       maxZoom={1.8}
       nodesConnectable={false}
+      nodesDraggable={!disabled}
       deleteKeyCode={null}
       proOptions={{ hideAttribution: false }}
     >
@@ -140,6 +143,7 @@ export function DocumentationCanvas(props: {
   documents: DocumentationNode[];
   selectedId: string | null;
   resetKey: number;
+  disabled: boolean;
   onSelect: (id: string) => void;
   onMove: (document: DocumentationNode, x: number, y: number) => void;
 }) {

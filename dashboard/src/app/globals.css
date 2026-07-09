@@ -578,6 +578,7 @@ a.button-quiet:hover {
   color: var(--ink);
   font-weight: 400;
   text-align: left;
+  cursor: text;
 }
 
 .docs-preview:hover {
@@ -723,6 +724,7 @@ a.button-quiet:hover {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.75rem;
+  position: relative;
 }
 
 .docs-inspector-footer summary {
@@ -735,7 +737,8 @@ a.button-quiet:hover {
   position: absolute;
   right: 1rem;
   bottom: 3.25rem;
-  left: calc(58% + 1rem);
+  left: 0;
+  width: min(360px, calc(100vw - 2rem));
   z-index: 10;
   overflow-y: auto;
   border: 1px solid var(--line);
@@ -796,7 +799,7 @@ a.button-quiet:hover {
 
   .docs-body {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 52vh auto;
+    grid-template-rows: 52vh auto;
   }
 
   .docs-outline {
@@ -807,6 +810,10 @@ a.button-quiet:hover {
     min-height: 58vh;
     border-top: 1px solid var(--line);
     border-left: 0;
+  }
+
+  .docs-canvas {
+    min-height: 52vh;
   }
 
   .docs-project,

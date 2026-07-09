@@ -1,5 +1,5 @@
 import { apiJson, apiOptions } from "@/lib/documentation-api";
-import { loadDocumentationNodes } from "@/lib/documentation";
+import { getSupabase } from "@/lib/data";
 import { loadDocumentationProject } from "@/lib/documentation-project";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +15,20 @@ export async function GET() {
     }, 503);
   }
 
-  const nodes = await loadDocumentationNodes(project.id);
+  const supabase = getSupabase()!;
+  const { count, error } = await supabase
+    .from("documentation_nodes")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", project.id);
+  if (error) {
+    return apiJson({ ok: false, status: "database_error", component: "documentation" }, 503);
+  }
   return apiJson({
     ok: true,
     status: "ready",
     component: "documentation",
     project: project.slug,
-    node_count: nodes.length,
+    node_count: count ?? 0,
     checked_at: new Date().toISOString(),
   });
 }

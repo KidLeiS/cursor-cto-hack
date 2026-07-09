@@ -21,8 +21,11 @@ Responses include permissive CORS headers and disable caching.
 | `DELETE` | `/api/docs/assets/:id` | Archive an image |
 | `GET` | `/api/docs/assets/:id/content` | Redirect to a short-lived signed image URL |
 
-All writes are validated. Updates require the current `expected_lock_version`;
-stale writes return HTTP `409`.
+All writes are validated. The public test surface is capped at 250 documents,
+500 KB of Markdown per document, 10 KB of canvas metadata, and 10 MB per image.
+Image signatures are checked rather than trusting the browser MIME declaration.
+Updates require the current `expected_lock_version`; stale writes return HTTP
+`409`. Object IDs are scoped to the configured project before every mutation.
 
 ## Examples
 
