@@ -14,6 +14,7 @@ import {
   createDocumentationNode,
   deleteDocumentationNode,
   moveDocumentationNode,
+  updateDocumentationContent,
   uploadDocumentationImage,
 } from "@/lib/documentation-actions";
 import { updateWorkplanStep } from "@/lib/actions";
@@ -462,8 +463,12 @@ export function SushicodeWorkspace({
   );
   const activeFeature = features.find((feature) => feature.id === activeFeatureId) ?? null;
 
-  async function persistNodeMove(node: DocumentationNode, point: Point, parentId = node.parent_id) {
-    if (!backendEnabled || node.id.startsWith("demo-")) return;
+  async function persistNodeMove(
+    node: DocumentationNode,
+    point: Point,
+    parentId = node.parent_id,
+  ): Promise<boolean> {
+    if (!backendEnabled || node.id.startsWith("demo-")) return true;
     const result = await moveDocumentationNode({
       id: node.id,
       expected_lock_version: node.lock_version,
@@ -477,7 +482,7 @@ export function SushicodeWorkspace({
     });
     if (!result.ok) {
       setToast(result.error);
-      return;
+      return false;
     }
     if (result.data) {
       setNodes((current) =>
@@ -485,6 +490,7 @@ export function SushicodeWorkspace({
       );
     }
     setToast("Canvas position synced");
+    return true;
   }
 
   function selectNode(node: DocumentationNode) {
@@ -497,8 +503,17 @@ export function SushicodeWorkspace({
           ),
         );
         setExpanded((current) => new Set(current).add(node.id));
-        void persistNodeMove(moving, positions[moving.id], node.id);
-        setToast(`Moved “${moving.title}” into “${node.title}”`);
+        void persistNodeMove(moving, positions[moving.id], node.id).then((saved) => {
+          if (!saved) {
+            setNodes((current) =>
+              current.map((item) =>
+                item.id === moving.id ? { ...item, parent_id: moving.parent_id } : item,
+              ),
+            );
+            return;
+          }
+          setToast(`Moved “${moving.title}” into “${node.title}”`);
+        });
       }
       setMovingId(null);
       return;
@@ -551,7 +566,13 @@ export function SushicodeWorkspace({
     const node = nodes.find((item) => item.id === drag.id);
     setPositions((current) => ({ ...current, [drag.id]: next }));
     setDrag(null);
-    if (node) void persistNodeMove(node, next);
+    if (node) {
+      void persistNodeMove(node, next).then((saved) => {
+        if (!saved) {
+          setPositions((current) => ({ ...current, [node.id]: drag.origin }));
+        }
+      });
+    }
   }
 
   function handleCanvasPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -628,7 +649,14 @@ export function SushicodeWorkspace({
         setToast(result.error);
         return;
       }
-      if (result.data) draft.id = result.data.id;
+      if (result.data) {
+        setNodes((current) => [...current, result.data!]);
+        setPositions((current) => ({ ...current, [result.data!.id]: point }));
+        if (parent) setExpanded((current) => new Set(current).add(parent.id));
+        setSelectedId(result.data.id);
+        setToast("New note added");
+        return;
+      }
     }
     setNodes((current) => [...current, draft]);
     setPositions((current) => ({ ...current, [draft.id]: point }));
@@ -672,7 +700,28 @@ export function SushicodeWorkspace({
     data.set("node_id", selectedNode.id);
     data.set("file", file);
     const result = await uploadDocumentationImage(data);
-    setToast(result.ok ? `${file.name} uploaded` : result.error);
+    if (!result.ok || !result.data) {
+      setToast(result.ok ? "Image upload did not return an asset." : result.error);
+      event.target.value = "";
+      return;
+    }
+
+    const updated = await updateDocumentationContent({
+      id: selectedNode.id,
+      expected_lock_version: selectedNode.lock_version,
+      slug: selectedNode.slug,
+      title: selectedNode.title,
+      markdown: `${selectedNode.markdown.trimEnd()}\n\n${result.data.markdown}`,
+    });
+    if (!updated.ok || !updated.data) {
+      setToast(updated.ok ? "Image uploaded but could not be attached to the note." : updated.error);
+      event.target.value = "";
+      return;
+    }
+    setNodes((current) =>
+      current.map((node) => (node.id === updated.data!.id ? updated.data! : node)),
+    );
+    setToast(`${file.name} uploaded and attached to ${selectedNode.title}`);
     event.target.value = "";
   }
 
