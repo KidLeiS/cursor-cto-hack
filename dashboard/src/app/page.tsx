@@ -4,6 +4,8 @@ import { loadDocumentationNodes } from "@/lib/documentation";
 import { loadRoadmapBundle } from "@/lib/roadmap";
 import { loadTaskTrackerBundle } from "@/lib/task-tracker";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const bundle = await loadDashboardBundle();
   const [documentationNodes, taskTracker, roadmapBundle] = await Promise.all([
