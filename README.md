@@ -2,127 +2,125 @@
 
 **iOS Cursor Hack · Sponsored by [Cursor](https://cursor.com) & [Supabase](https://supabase.com)**
 
-A toolkit of Cursor skills, tools, and workflows that turn Cursor into an async cloud CTO and chief backend architect — so you can ship at lightspeed while a high-capability agent owns architecture, planning, and validation gates.
+Harness-native CTO toolkit: Cursor (or Codex / Claude) runs the agents; **our intelligence** is skills + shared context + an editable workplan dashboard.
 
 ---
 
-## The idea
+## Stack (Option B)
 
-Most agent coding is still synchronous and local: you sit in the loop, the model implements, you review. This project flips that.
-
-Cursor runs **async in the cloud** as your CTO / chief architecture (backend). You set direction; it organises the system, plans the work, decomposes features into validation gates, and drives cheaper models through implement → validate cycles until the gates pass.
-
-The goal is not “more autocomplete.” It’s a **repeatable operating system for shipping**: architecture maps, feature maps, test infrastructure, and cost-aware agent routing.
-
----
-
-## Four pillars
-
-### 1. Organisation & visualisation of architecture
-
-Keep the codebase legible to both humans and agents.
-
-- **Platform map** — top-level system shape: services, boundaries, data stores, external deps
-- **Module maps** — per-module structure, ownership, interfaces, and dependencies
-- **Standard module README** — one consistent, maximally useful template per module (purpose, public API, invariants, how to test, related maps)
-
-Agents navigate and update these maps as the system evolves. Humans get a living architecture surface instead of tribal knowledge.
-
-### 2. Feature map & high-level validation gates
-
-Features are first-class artefacts, not just tickets.
-
-- Maintain an **ongoing feature map** (what exists, what’s in flight, what’s next)
-- Define **high-level validation gates** per feature (what “done” means before merge/ship)
-- The AI CTO decomposes each feature into **sub-features** and **sub-validation gates** so implementation work is scoped and checkable
-
-Gates are the contract between planning and execution.
-
-### 3. Tools to test the app
-
-Validation is only as strong as the harness.
-
-| Layer | Approach |
+| Piece | Role |
 | --- | --- |
-| **Unit tests** | Fast, local, deterministic coverage of modules and pure logic |
-| **Integration tests** | Cross-boundary behaviour; **secure credentials** granted via GitHub Actions / CI secrets — never baked into the repo |
-| **Smoke tests** | Playwright-based flows with **screenshots**; an agent reviews screenshots for regressions and UX breaks |
+| **Cursor / Codex / Claude** | Superior harness (tools, cloud agents, iOS) |
+| **Skills + prompts** | Portable “brain” — Feature & Debug agents |
+| **Supabase** | Shared mutable context agents and UI both read/write |
+| **Vercel dashboard** | Visualise maps/gates; **edit workplans** before implementers run |
+| **GitHub Actions** | Unit tests locally-style; migrate + Vercel deploy + prod smoke |
 
-CI is the trust boundary for secrets and the place where smoke evidence (screenshots + agent review) is produced.
-
-### 4. Workplan & cost-aware agent routing
-
-Planning is expensive; grinding through implement/validate loops should not be.
-
-1. **Costly / high-capability agent** — produces the high-level workplan, per-step implementation plan, and validation requirements
-2. **Cheaper model** — runs implementation and validation cycles against those requirements
-3. Escalate back to the CTO agent when gates fail in ways that need architectural judgment
-
-This keeps quality at the top of the funnel and cost under control in the loop.
+**Contract:** dashboard edits win. Implement prompts always re-read the step from Supabase before coding.
 
 ---
 
-## How the loop works
+## Environment setup
+
+GitHub Actions already has:
+
+| Secret | What it is | Used by |
+| --- | --- | --- |
+| `SB_URL` | `https://<ref>.supabase.co` | migration + production smoke |
+| `SB_PK` | Supabase **anon public** key | production smoke |
+| `SB_PW` | Database password | migration only |
+
+Set these Vercel project environment variables for Production and Preview:
+
+| Variable | Value |
+| --- | --- |
+| `SB_URL` | same project URL |
+| `SB_PK` | same anon public key |
+| `NEXT_PUBLIC_PROJECT_SLUG` | `cursor-cto-hack` |
+
+`SB_PW` is not needed by the dashboard and should stay only in GitHub Actions.
+
+---
+
+## CI pipeline (hackathon)
 
 ```text
-You (intent / constraints)
-        │
-        ▼
-┌───────────────────────┐
-│  CTO agent (cloud)    │  architecture maps · feature map · workplan
-│  high-capability      │  validation gates · implementation plans
-└───────────┬───────────┘
-            │
-            ▼
-┌───────────────────────┐
-│  Implementer (cheap)  │  code changes against the plan
-└───────────┬───────────┘
-            │
-            ▼
-┌───────────────────────┐
-│  Validators           │  unit · integration (CI secrets) · Playwright smoke
-│                       │  + agent screenshot review
-└───────────┬───────────┘
-            │
-     gates pass? ──no──► escalate / replan (CTO) or fix (implementer)
-            │
-           yes
-            ▼
-         ship
+PR / push  → GitHub Actions unit + typecheck (no secrets)
+push main  → GitHub Actions migrate Supabase
+push/PR    → Vercel's GitHub integration deploys dashboard/
+deploy OK  → GitHub deployment_status event → production smoke
+```
+
+Workflows: [CI](.github/workflows/ci.yml) and [production smoke](.github/workflows/production-smoke.yml).
+
+### One-time Vercel setup (no CLI tokens)
+
+1. Vercel dashboard → **Add New → Project**
+2. Import `KidLeiS/cursor-cto-hack`
+3. Set **Root Directory** to `dashboard`
+4. Framework preset: **Next.js**
+5. Add the three Vercel variables above for Production + Preview
+6. Deploy
+
+Vercel then deploys every push itself and reports the deployment URL back to GitHub. No `VERCEL_TOKEN`, org ID, project ID, or deployment CLI is required.
+
+---
+
+## Local unit tests (no secrets)
+
+```bash
+cd dashboard
+pnpm install
+pnpm test        # node:test domain helpers + demo bundle
+pnpm typecheck
 ```
 
 ---
 
-## Repo shape (target)
+## Two agent kinds
+
+### Feature agent
+Intent (and optional frontend notes) → modules + validation gates + editable workplan → cheap implement/validate loops.
+
+- Skill: [`skills/feature-agent/SKILL.md`](skills/feature-agent/SKILL.md)
+- Prompts: [`prompts/feature-plan.md`](prompts/feature-plan.md), [`prompts/feature-implement.md`](prompts/feature-implement.md)
+
+### Debug agent
+Symptom / failing gate → triage + minimal fix workplan → implement/validate (no feature expansion).
+
+- Skill: [`skills/debug-agent/SKILL.md`](skills/debug-agent/SKILL.md)
+- Prompts: [`prompts/debug-plan.md`](prompts/debug-plan.md), [`prompts/debug-implement.md`](prompts/debug-implement.md)
+
+---
+
+## Repo layout
 
 ```text
 .
-├── README.md                 # this file
-├── platform/                 # platform map + cross-cutting architecture
-├── modules/                  # module maps + standard module READMEs
-├── features/                 # feature map, gates, sub-feature breakdowns
-├── workplans/                # CTO workplans & per-step implementation plans
-├── skills/                   # Cursor skills for CTO / implementer / validator roles
-├── tools/                    # helpers for maps, gates, smoke review, CI wiring
-└── .github/workflows/        # unit, integration (secrets), Playwright smoke
+├── .github/workflows/ci.yml
+├── scripts/migrate.mjs          # SB_URL + SB_PW
+├── scripts/smoke.mjs            # DASHBOARD_URL + SB_URL + SB_PK
+├── shared/types.ts
+├── supabase/migrations/
+├── skills/  prompts/  templates/  platform/
+└── dashboard/                   # Next.js → Vercel
 ```
 
-Exact layout will firm up as skills and tools land; the maps and gates are the source of truth.
-
 ---
 
-## Sponsors
+## Manual Supabase (optional)
 
-Built for the **iOS Cursor Hack**, with thanks to:
+CI migrate applies [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql). You can also paste it in the Supabase SQL editor once.
 
-- **Cursor** — agent runtime, skills, and cloud async workflows
-- **Supabase** — backend platform for the systems this CTO stack is meant to ship against
+Local dashboard without secrets loads **demo** data. With `.env.local`:
 
----
-
-## Status
-
-Early scaffold. Next up: standard module README template, platform/module map conventions, feature-gate schema, and the first Cursor skills for CTO planning vs cheap implement/validate loops.
+```bash
+cd dashboard
+cp .env.example .env.local
+# NEXT_PUBLIC_SUPABASE_URL=<SB_URL>
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=<SB_PK>
+pnpm dev
+```
 
 ---
 

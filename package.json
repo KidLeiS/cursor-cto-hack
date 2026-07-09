@@ -1,0 +1,13 @@
+{
+  "name": "cursor-cto-hack",
+  "private": true,
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "test": "pnpm --dir dashboard test",
+    "build:dashboard": "pnpm --dir dashboard build"
+  },
+  "dependencies": {
+    "pg": "^8.16.0"
+  }
+}

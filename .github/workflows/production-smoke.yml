@@ -1,0 +1,24 @@
+name: Production smoke
+
+on:
+  deployment_status:
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Smoke Vercel deployment + Supabase
+        env:
+          SB_URL: ${{ secrets.SB_URL }}
+          SB_PK: ${{ secrets.SB_PK }}
+          DASHBOARD_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+        run: node scripts/smoke.mjs
