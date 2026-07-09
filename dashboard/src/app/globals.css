@@ -4092,3 +4092,24 @@ a.button-quiet:hover {
 .sync-toast {
   background: rgba(255, 255, 255, 0.92);
 }
+
+.workspace-shell,
+.workspace-shell * {
+  font-family: var(--font-body-loaded), "Lato", Arial, sans-serif !important;
+}
+
+.workspace-shell code,
+.workspace-shell pre,
+.workspace-shell .eyebrow,
+.workspace-shell .topbar-center,
+.workspace-shell .canvas-label,
+.workspace-shell .node-header,
+.workspace-shell .node-footer,
+.workspace-shell .feature-status,
+.workspace-shell .sync-toast {
+  font-family: var(--font-mono-loaded), "DM Mono", monospace !important;
+}
+
+.workspace-shell .new-feature {
+  box-shadow: none !important;
+}
