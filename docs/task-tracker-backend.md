@@ -22,8 +22,8 @@ The prompt includes the complete output JSON Schema, and the response is
 independently validated with Zod before any database write. Invalid or partial
 model output fails closed.
 
-Configure `DEEPSEEK_API_KEY` in Vercel. `DEEPSEEK_MODEL` is optional and defaults
-to `deepseek-chat`. The key is never sent to the browser.
+Configure `ds_api` in Vercel. `DEEPSEEK_MODEL` is optional and defaults to
+`deepseek-chat`. The key is never sent to the browser.
 
 ## Persistence
 

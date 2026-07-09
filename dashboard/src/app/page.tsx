@@ -1,26 +1,20 @@
-import Link from "next/link";
+import { SushicodeWorkspace } from "@/components/SushicodeWorkspace";
+import { loadDashboardBundle } from "@/lib/data";
+import { loadDocumentationNodes } from "@/lib/documentation";
+import { loadTaskTrackerBundle } from "@/lib/task-tracker";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const bundle = await loadDashboardBundle();
+  const [documentationNodes, taskTracker] = await Promise.all([
+    loadDocumentationNodes(bundle.project.id).catch(() => []),
+    loadTaskTrackerBundle().catch(() => ({ items: [] })),
+  ]);
+
   return (
-    <main className="landing">
-      <div className="hero">
-        <h1 className="brand">sushicode is code</h1>
-        <p className="lede">
-          Client tasks, shared documentation, and executable roadmaps for cloud
-          agents and product teams.
-        </p>
-        <div className="actions">
-          <Link className="button-link" href="/tracker">
-            Open task tracker
-          </Link>
-          <Link className="button-quiet" href="/docs">
-            Open documentation
-          </Link>
-          <Link className="button-quiet" href="/tasks">
-            Open roadmap
-          </Link>
-        </div>
-      </div>
-    </main>
+    <SushicodeWorkspace
+      bundle={bundle}
+      documentationNodes={documentationNodes}
+      taskTrackerItems={taskTracker.items}
+    />
   );
 }

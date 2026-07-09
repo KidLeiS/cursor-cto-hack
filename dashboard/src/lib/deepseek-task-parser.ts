@@ -114,10 +114,10 @@ export async function parseTasksWithDeepSeek(
     url?: string;
   } = {},
 ): Promise<TaskTrackerLlmOutput> {
-  const apiKey = options.apiKey ?? process.env.DEEPSEEK_API_KEY;
+  const apiKey = options.apiKey ?? process.env.ds_api;
   if (!apiKey) {
     throw new DeepSeekTaskParserError(
-      "DeepSeek is not configured. Set DEEPSEEK_API_KEY in Vercel.",
+      "DeepSeek is not configured. Set ds_api in Vercel.",
       "not_configured",
     );
   }
