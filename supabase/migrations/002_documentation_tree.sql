@@ -80,6 +80,7 @@ create table if not exists public.documentation_assets (
   width integer,
   height integer,
   alt_text text,
+  archived_at timestamptz,
   created_at timestamptz not null default now(),
   unique (storage_bucket, storage_path),
   constraint documentation_assets_node_fk
@@ -96,6 +97,40 @@ create table if not exists public.documentation_assets (
 
 create index if not exists documentation_assets_node_idx
   on public.documentation_assets (node_id, created_at);
+
+-- Physical objects cannot be removed transactionally by a Postgres cascade.
+-- Hard metadata deletion queues eventual Storage cleanup (for example when an
+-- entire project is removed). User-facing image deletion only archives rows.
+create table if not exists public.documentation_storage_cleanup_queue (
+  id bigint generated always as identity primary key,
+  storage_bucket text not null,
+  storage_path text not null,
+  created_at timestamptz not null default now(),
+  processed_at timestamptz,
+  last_error text,
+  unique (storage_bucket, storage_path)
+);
+
+create or replace function public.queue_documentation_storage_cleanup()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.documentation_storage_cleanup_queue (storage_bucket, storage_path)
+  values (old.storage_bucket, old.storage_path)
+  on conflict (storage_bucket, storage_path) do update set
+    processed_at = null,
+    last_error = null;
+  return old;
+end;
+$$;
+
+drop trigger if exists documentation_assets_queue_cleanup on public.documentation_assets;
+create trigger documentation_assets_queue_cleanup
+  after delete on public.documentation_assets
+  for each row execute function public.queue_documentation_storage_cleanup();
 
 -- Reject cycles even when a node is moved several levels at once.
 create or replace function public.validate_documentation_parent()
@@ -168,23 +203,156 @@ create trigger documentation_nodes_version
   before update on public.documentation_nodes
   for each row execute function public.version_documentation_node();
 
+-- All updates use database-level compare-and-swap. Direct table updates are not
+-- permitted by RLS, so REST clients cannot silently overwrite a newer version.
+create or replace function public.update_documentation_content(
+  p_node_id uuid,
+  p_expected_lock_version integer,
+  p_slug text,
+  p_title text,
+  p_markdown text
+)
+returns setof public.documentation_nodes
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+    update public.documentation_nodes
+    set slug = p_slug, title = p_title, markdown = p_markdown
+    where id = p_node_id and lock_version = p_expected_lock_version
+    returning *;
+end;
+$$;
+
+create or replace function public.move_documentation_node(
+  p_node_id uuid,
+  p_expected_lock_version integer,
+  p_parent_id uuid,
+  p_sort_order integer,
+  p_canvas_x double precision,
+  p_canvas_y double precision,
+  p_canvas_width double precision default null,
+  p_canvas_height double precision default null,
+  p_canvas_metadata jsonb default '{}'::jsonb
+)
+returns setof public.documentation_nodes
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_project_id uuid;
+begin
+  select project_id into v_project_id
+  from public.documentation_nodes
+  where id = p_node_id;
+  if v_project_id is null then return; end if;
+
+  -- Serialize hierarchy changes within a project. This closes the race where
+  -- simultaneous inverse moves could each pass a cycle check.
+  perform pg_advisory_xact_lock(hashtextextended(v_project_id::text, 0));
+
+  return query
+    update public.documentation_nodes
+    set parent_id = p_parent_id,
+        sort_order = p_sort_order,
+        canvas_x = p_canvas_x,
+        canvas_y = p_canvas_y,
+        canvas_width = p_canvas_width,
+        canvas_height = p_canvas_height,
+        canvas_metadata = p_canvas_metadata
+    where id = p_node_id and lock_version = p_expected_lock_version
+    returning *;
+end;
+$$;
+
+create or replace function public.delete_documentation_node(
+  p_node_id uuid,
+  p_expected_lock_version integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_deleted boolean;
+begin
+  delete from public.documentation_nodes
+  where id = p_node_id and lock_version = p_expected_lock_version
+  returning true into v_deleted;
+  return coalesce(v_deleted, false);
+end;
+$$;
+
+create or replace function public.archive_documentation_asset(p_asset_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_archived boolean;
+begin
+  update public.documentation_assets
+  set archived_at = coalesce(archived_at, now())
+  where id = p_asset_id
+  returning true into v_archived;
+  return coalesce(v_archived, false);
+end;
+$$;
+
 alter table public.documentation_nodes enable row level security;
 alter table public.documentation_revisions enable row level security;
 alter table public.documentation_assets enable row level security;
+alter table public.documentation_storage_cleanup_queue enable row level security;
 
 -- Match the existing hack/demo access model. Replace these with membership policies
 -- when authentication is introduced.
 drop policy if exists "documentation_nodes_all" on public.documentation_nodes;
-create policy "documentation_nodes_all" on public.documentation_nodes
-  for all using (true) with check (true);
+drop policy if exists "documentation_nodes_read" on public.documentation_nodes;
+create policy "documentation_nodes_read" on public.documentation_nodes
+  for select using (true);
+drop policy if exists "documentation_nodes_insert" on public.documentation_nodes;
+create policy "documentation_nodes_insert" on public.documentation_nodes
+  for insert with check (true);
 
 drop policy if exists "documentation_revisions_read" on public.documentation_revisions;
 create policy "documentation_revisions_read" on public.documentation_revisions
   for select using (true);
 
 drop policy if exists "documentation_assets_all" on public.documentation_assets;
-create policy "documentation_assets_all" on public.documentation_assets
-  for all using (true) with check (true);
+drop policy if exists "documentation_assets_read" on public.documentation_assets;
+create policy "documentation_assets_read" on public.documentation_assets
+  for select using (true);
+drop policy if exists "documentation_assets_insert" on public.documentation_assets;
+create policy "documentation_assets_insert" on public.documentation_assets
+  for insert with check (true);
+
+-- The cleanup queue is deliberately inaccessible to anonymous clients. A
+-- service-role worker can read it (service_role bypasses RLS) and remove objects.
+
+revoke all on function public.update_documentation_content(uuid, integer, text, text, text)
+  from public;
+revoke all on function public.move_documentation_node(
+  uuid, integer, uuid, integer, double precision, double precision,
+  double precision, double precision, jsonb
+) from public;
+revoke all on function public.delete_documentation_node(uuid, integer) from public;
+revoke all on function public.archive_documentation_asset(uuid) from public;
+
+grant execute on function public.update_documentation_content(uuid, integer, text, text, text)
+  to anon, authenticated;
+grant execute on function public.move_documentation_node(
+  uuid, integer, uuid, integer, double precision, double precision,
+  double precision, double precision, jsonb
+) to anon, authenticated;
+grant execute on function public.delete_documentation_node(uuid, integer)
+  to anon, authenticated;
+grant execute on function public.archive_documentation_asset(uuid)
+  to anon, authenticated;
 
 -- Supabase Storage is the binary layer. The bucket is private; callers receive
 -- short-lived signed URLs rather than permanent public links.

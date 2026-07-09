@@ -107,15 +107,13 @@ export async function updateDocumentationContent(
   if (!supabase) return notConfigured();
 
   const { data, error } = await supabase
-    .from("documentation_nodes")
-    .update({
-      slug: input.slug,
-      title: input.title.trim(),
-      markdown: input.markdown,
+    .rpc("update_documentation_content", {
+      p_node_id: input.id,
+      p_expected_lock_version: input.expected_lock_version,
+      p_slug: input.slug,
+      p_title: input.title.trim(),
+      p_markdown: input.markdown,
     })
-    .eq("id", input.id)
-    .eq("lock_version", input.expected_lock_version)
-    .select("*")
     .maybeSingle();
 
   if (error) return { ok: false, error: error.message };
@@ -137,9 +135,9 @@ export type MoveDocumentationNodeInput = {
   sort_order: number;
   canvas_x: number;
   canvas_y: number;
-  canvas_width?: number | null;
-  canvas_height?: number | null;
-  canvas_metadata?: DocumentationCanvasMetadata;
+  canvas_width: number | null;
+  canvas_height: number | null;
+  canvas_metadata: DocumentationCanvasMetadata;
 };
 
 export async function moveDocumentationNode(
@@ -159,22 +157,18 @@ export async function moveDocumentationNode(
   const supabase = getSupabase();
   if (!supabase) return notConfigured();
 
-  const update: Record<string, unknown> = {
-    parent_id: input.parent_id,
-    sort_order: input.sort_order,
-    canvas_x: input.canvas_x,
-    canvas_y: input.canvas_y,
-  };
-  if (input.canvas_width !== undefined) update.canvas_width = input.canvas_width;
-  if (input.canvas_height !== undefined) update.canvas_height = input.canvas_height;
-  if (input.canvas_metadata !== undefined) update.canvas_metadata = input.canvas_metadata;
-
   const { data, error } = await supabase
-    .from("documentation_nodes")
-    .update(update)
-    .eq("id", input.id)
-    .eq("lock_version", input.expected_lock_version)
-    .select("*")
+    .rpc("move_documentation_node", {
+      p_node_id: input.id,
+      p_expected_lock_version: input.expected_lock_version,
+      p_parent_id: input.parent_id,
+      p_sort_order: input.sort_order,
+      p_canvas_x: input.canvas_x,
+      p_canvas_y: input.canvas_y,
+      p_canvas_width: input.canvas_width,
+      p_canvas_height: input.canvas_height,
+      p_canvas_metadata: input.canvas_metadata,
+    })
     .maybeSingle();
 
   if (error) return { ok: false, error: error.message };
@@ -224,13 +218,10 @@ export async function deleteDocumentationNode(input: {
   const supabase = getSupabase();
   if (!supabase) return notConfigured();
 
-  const { data, error } = await supabase
-    .from("documentation_nodes")
-    .delete()
-    .eq("id", input.id)
-    .eq("lock_version", input.expected_lock_version)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("delete_documentation_node", {
+    p_node_id: input.id,
+    p_expected_lock_version: input.expected_lock_version,
+  });
 
   if (error) return { ok: false, error: error.message };
   if (!data) {
@@ -313,21 +304,13 @@ export async function deleteDocumentationImage(assetId: string): Promise<ActionR
   const supabase = getSupabase();
   if (!supabase) return notConfigured();
 
-  const { data: asset, error: readError } = await supabase
-    .from("documentation_assets")
-    .select("storage_bucket,storage_path")
-    .eq("id", assetId)
-    .maybeSingle();
-  if (readError) return { ok: false, error: readError.message };
-  if (!asset) return { ok: false, code: "invalid", error: "Image was not found." };
-
-  const { error: storageError } = await supabase.storage
-    .from(asset.storage_bucket as string)
-    .remove([asset.storage_path as string]);
-  if (storageError) return { ok: false, error: storageError.message };
-
-  const { error } = await supabase.from("documentation_assets").delete().eq("id", assetId);
+  // Keep the object and metadata so old immutable revisions remain renderable.
+  // A future editor should hide archived assets from its insert-image gallery.
+  const { data, error } = await supabase.rpc("archive_documentation_asset", {
+    p_asset_id: assetId,
+  });
   if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, code: "invalid", error: "Image was not found." };
 
   revalidateDocumentation();
   return { ok: true };

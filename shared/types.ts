@@ -187,6 +187,7 @@ export interface DocumentationAsset {
   width: number | null;
   height: number | null;
   alt_text: string | null;
+  archived_at: string | null;
   created_at: string;
 }
 

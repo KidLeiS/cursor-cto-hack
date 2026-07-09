@@ -14,6 +14,27 @@ export type DocumentationTree = {
   orphaned: DocumentationTreeNode[];
 };
 
+const PAGE_SIZE = 1000;
+
+type PageResult<T> = {
+  data: T[] | null;
+  error: { message: string } | null;
+};
+
+async function fetchAll<T>(
+  label: string,
+  loadPage: (from: number, to: number) => PromiseLike<PageResult<T>>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await loadPage(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`${label}: ${error.message}`);
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
+}
+
 function compareNodes(a: DocumentationNode, b: DocumentationNode): number {
   return a.sort_order - b.sort_order || a.title.localeCompare(b.title);
 }
@@ -56,15 +77,16 @@ export async function loadDocumentationNodes(
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  const { data, error } = await supabase
-    .from("documentation_nodes")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("sort_order")
-    .order("title");
-
-  if (error) throw new Error(`Unable to load documentation: ${error.message}`);
-  return (data ?? []) as DocumentationNode[];
+  return fetchAll<DocumentationNode>("Unable to load documentation", (from, to) =>
+    supabase
+      .from("documentation_nodes")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("sort_order")
+      .order("title")
+      .order("id")
+      .range(from, to),
+  );
 }
 
 export async function loadDocumentationTree(
@@ -79,14 +101,14 @@ export async function loadDocumentationRevisions(
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  const { data, error } = await supabase
-    .from("documentation_revisions")
-    .select("*")
-    .eq("node_id", nodeId)
-    .order("content_version", { ascending: false });
-
-  if (error) throw new Error(`Unable to load document history: ${error.message}`);
-  return (data ?? []) as DocumentationRevision[];
+  return fetchAll<DocumentationRevision>("Unable to load document history", (from, to) =>
+    supabase
+      .from("documentation_revisions")
+      .select("*")
+      .eq("node_id", nodeId)
+      .order("content_version", { ascending: false })
+      .range(from, to),
+  );
 }
 
 export type DocumentationAssetWithUrl = DocumentationAsset & {
@@ -99,14 +121,17 @@ export async function loadDocumentationAssets(
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  const { data, error } = await supabase
-    .from("documentation_assets")
-    .select("*")
-    .eq("node_id", nodeId)
-    .order("created_at");
-  if (error) throw new Error(`Unable to load document images: ${error.message}`);
-
-  const assets = (data ?? []) as DocumentationAsset[];
+  const assets = await fetchAll<DocumentationAsset>(
+    "Unable to load document images",
+    (from, to) =>
+      supabase
+        .from("documentation_assets")
+        .select("*")
+        .eq("node_id", nodeId)
+        .order("created_at")
+        .order("id")
+        .range(from, to),
+  );
   return Promise.all(
     assets.map(async (asset) => {
       const { data: signed, error: signError } = await supabase.storage

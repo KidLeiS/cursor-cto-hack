@@ -16,11 +16,19 @@ server actions. No editor or canvas UI is included in this change.
   regardless of which client performs the write.
 - `documentation_assets` contains image metadata. Bytes are limited to 10 MB and
   stored in the private `documentation-assets` Supabase Storage bucket.
+- `documentation_storage_cleanup_queue` records physical objects that must be
+  removed after hard metadata cascades, since Storage deletion cannot participate
+  in a PostgreSQL transaction.
 
 Sibling slugs are unique, parent/project foreign keys cannot cross projects, and
 a trigger prevents cycles. `lock_version` provides optimistic concurrency for
 both editor saves and canvas moves. `content_version` advances only when
 document content changes.
+
+Content updates, canvas moves, and node deletes go through database functions
+that require the caller's expected `lock_version`. Direct table updates are
+blocked by RLS. Moves take a project-scoped transaction lock, preventing two
+concurrent moves from creating a cycle.
 
 ## Backend API
 
@@ -40,7 +48,9 @@ Mutations are Next.js server actions in
 Image uploads return Markdown using an `asset:<uuid>` URL. The eventual renderer
 should replace that token with the corresponding signed URL returned by
 `loadDocumentationAssets`; signed URLs must not be persisted because they
-expire.
+expire. Deleting an image archives it instead of destroying the object, because
+immutable document revisions may still reference it. Read helpers paginate
+through Supabase's default row limit.
 
 ## Access control
 
