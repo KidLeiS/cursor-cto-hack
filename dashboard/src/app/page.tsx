@@ -9,7 +9,12 @@ export default function HomePage() {
         padding: "1.5rem",
       }}
     >
-      <h1 className="brand">sushicode is code</h1>
+      <div style={{ textAlign: "center" }}>
+        <h1 className="brand">sushicode is code</h1>
+        <a className="landing-docs-link" href="/docs">
+          Open documentation
+        </a>
+      </div>
     </main>
   );
 }
