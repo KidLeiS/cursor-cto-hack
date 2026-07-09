@@ -6,15 +6,18 @@ export default function HomePage() {
       <div className="hero">
         <h1 className="brand">sushicode is code</h1>
         <p className="lede">
-          Shared architecture, documentation, and executable roadmaps for cloud
-          agents.
+          Client tasks, shared documentation, and executable roadmaps for cloud
+          agents and product teams.
         </p>
         <div className="actions">
-          <Link className="button-link" href="/tasks">
-            Open roadmap
+          <Link className="button-link" href="/tracker">
+            Open task tracker
           </Link>
           <Link className="button-quiet" href="/docs">
             Open documentation
+          </Link>
+          <Link className="button-quiet" href="/tasks">
+            Open roadmap
           </Link>
         </div>
       </div>
