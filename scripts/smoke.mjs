@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Production smoke: dashboard HTML + Supabase REST with SB_PK / SB_URL.
+ * Production smoke: dashboard HTML, read APIs, and Supabase REST.
  * Env: SB_URL, SB_PK, DASHBOARD_URL (Vercel deployment URL)
  */
 
@@ -99,6 +99,31 @@ async function main() {
     }
   });
   console.log("Documentation workspace OK");
+
+  console.log("Smoke roadmap + task tracker APIs");
+  await retry("Core read APIs", async () => {
+    const [roadmapResponse, trackerResponse] = await Promise.all([
+      fetch(`${dashboardUrl}/api/tasks`, {
+        headers: { "user-agent": "cursor-cto-smoke/1.0" },
+      }),
+      fetch(`${dashboardUrl}/api/task-tracker`, {
+        headers: { "user-agent": "cursor-cto-smoke/1.0" },
+      }),
+    ]);
+    await mustOk(roadmapResponse, "roadmap API");
+    await mustOk(trackerResponse, "task tracker API");
+
+    const roadmap = await roadmapResponse.json();
+    if (roadmap.source !== "supabase" || !Array.isArray(roadmap.data)) {
+      throw new Error(`Unexpected roadmap payload: ${JSON.stringify(roadmap).slice(0, 200)}`);
+    }
+
+    const tracker = await trackerResponse.json();
+    if (!tracker.ok || tracker.source !== "supabase" || !Array.isArray(tracker.data)) {
+      throw new Error(`Unexpected task tracker payload: ${JSON.stringify(tracker).slice(0, 200)}`);
+    }
+  });
+  console.log("Roadmap + task tracker APIs OK");
   console.log("Smoke passed");
 }
 
