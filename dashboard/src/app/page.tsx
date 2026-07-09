@@ -13,6 +13,9 @@ export default function HomePage() {
           <Link className="button-link" href="/tasks">
             Open roadmap
           </Link>
+          <Link className="button-quiet" href="/docs">
+            Open documentation
+          </Link>
         </div>
       </div>
     </main>
