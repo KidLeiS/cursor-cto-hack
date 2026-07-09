@@ -4113,3 +4113,18 @@ a.button-quiet:hover {
 .workspace-shell .new-feature {
   box-shadow: none !important;
 }
+
+.notes-list-card {
+  padding-right: 132px;
+}
+
+.attach-note-button {
+  right: 8px;
+  left: auto;
+  transform: translateY(-50%) translateX(6px);
+}
+
+.notes-list-row:hover .attach-note-button,
+.attach-note-button:focus-visible {
+  transform: translateY(-50%) translateX(0);
+}
