@@ -9,9 +9,13 @@
  *   SB_DB_HOST (optional) override host
  */
 
-const fs = require("node:fs");
-const path = require("node:path");
-const { Client } = require("pg");
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+
+const { Client } = pg;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function projectRefFromUrl(url) {
   const u = new URL(url);
