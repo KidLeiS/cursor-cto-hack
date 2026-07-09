@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Apply supabase/migrations/*.sql using SB_URL + SB_PW (GitHub Actions secrets).
+ * Apply backend/supabase/migrations/*.sql using SB_URL + SB_PW.
  * Never prints password or full connection string.
  *
  * Env:

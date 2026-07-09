@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: dashboard
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: dashboard/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck
@@ -41,9 +41,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install pg@8.16.0 --no-package-lock --no-save
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - run: pnpm --dir backend install --frozen-lockfile
       - name: Apply migrations
         env:
           SB_URL: ${{ secrets.SB_URL }}
           SB_PW: ${{ secrets.SB_PW }}
-        run: node scripts/migrate.mjs
+        run: pnpm --dir backend migrate

@@ -1,0 +1,11 @@
+{
+  "name": "cursor-cto-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.22.0"
+  }
+}

@@ -2,12 +2,9 @@
   "name": "cursor-cto-hack",
   "private": true,
   "scripts": {
-    "migrate": "node scripts/migrate.mjs",
+    "migrate": "pnpm --dir backend migrate",
     "smoke": "node scripts/smoke.mjs",
-    "test": "pnpm --dir dashboard test",
-    "build:dashboard": "pnpm --dir dashboard build"
-  },
-  "dependencies": {
-    "pg": "^8.16.0"
+    "test": "pnpm --dir frontend test",
+    "build:frontend": "pnpm --dir frontend build"
   }
 }

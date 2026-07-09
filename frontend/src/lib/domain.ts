@@ -251,7 +251,7 @@ export function demoBundle(): DashboardBundle {
         sort_order: 0,
         title: "Apply Supabase migration",
         implementation_plan:
-          "Run supabase/migrations/001_init.sql on the project; confirm seed project row.",
+          "Run backend/supabase/migrations/001_init.sql on the project; confirm seed project row.",
         validation_requirements:
           "Tables exist; seed project slug cursor-cto-hack present",
         target_module_ids: [],

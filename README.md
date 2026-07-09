@@ -47,7 +47,7 @@ Set these Vercel project environment variables for Production and Preview:
 ```text
 PR / push  → GitHub Actions unit + typecheck (no secrets)
 push main  → GitHub Actions migrate Supabase
-push/PR    → Vercel's GitHub integration deploys dashboard/
+push/PR    → Vercel's GitHub integration deploys frontend/
 deploy OK  → GitHub deployment_status event → production smoke
 ```
 
@@ -57,7 +57,7 @@ Workflows: [CI](.github/workflows/ci.yml) and [production smoke](.github/workflo
 
 1. Vercel dashboard → **Add New → Project**
 2. Import `KidLeiS/cursor-cto-hack`
-3. Set **Root Directory** to `dashboard`
+3. Set **Root Directory** to `frontend`
 4. Framework preset: **Next.js**
 5. Add the three Vercel variables above for Production + Preview
 6. Deploy
@@ -69,7 +69,7 @@ Vercel then deploys every push itself and reports the deployment URL back to Git
 ## Local unit tests (no secrets)
 
 ```bash
-cd dashboard
+cd frontend
 pnpm install
 pnpm test        # node:test domain helpers + demo bundle
 pnpm typecheck
@@ -98,24 +98,25 @@ Symptom / failing gate → triage + minimal fix workplan → implement/validate 
 ```text
 .
 ├── .github/workflows/ci.yml
-├── scripts/migrate.mjs          # SB_URL + SB_PW
+├── backend/
+│   ├── scripts/migrate.mjs      # SB_URL + SB_PW
+│   └── supabase/migrations/
+├── frontend/                    # Next.js → Vercel
 ├── scripts/smoke.mjs            # DASHBOARD_URL + SB_URL + SB_PK
 ├── shared/types.ts
-├── supabase/migrations/
-├── skills/  prompts/  templates/  platform/
-└── dashboard/                   # Next.js → Vercel
+└── skills/  prompts/  templates/  platform/
 ```
 
 ---
 
 ## Manual Supabase (optional)
 
-CI migrate applies [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql). You can also paste it in the Supabase SQL editor once.
+CI migrate applies [`backend/supabase/migrations/001_init.sql`](backend/supabase/migrations/001_init.sql). You can also paste it in the Supabase SQL editor once.
 
 Local dashboard without secrets loads **demo** data. With `.env.local`:
 
 ```bash
-cd dashboard
+cd frontend
 cp .env.example .env.local
 # NEXT_PUBLIC_SUPABASE_URL=<SB_URL>
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=<SB_PK>

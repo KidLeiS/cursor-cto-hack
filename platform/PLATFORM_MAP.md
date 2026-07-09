@@ -6,8 +6,8 @@ High-level system shape for agents and humans. Update when boundaries move.
 
 | Area | Responsibility | Notes |
 | --- | --- | --- |
-| Dashboard (Vercel) | Visualise features/modules; edit workplans | Next.js app in `dashboard/` |
-| Shared context (Supabase) | Features, gates, agent runs, workplans | `supabase/migrations/` |
+| Frontend dashboard (Vercel) | Visualise features/modules; edit workplans | Next.js app in `frontend/` |
+| Backend data layer (Supabase) | Features, gates, agent runs, workplans | `backend/supabase/migrations/` |
 | Harness | Cursor / Codex / Claude agent runs | Skills + prompts; not our runtime |
 | Target product | App being built by Feature/Debug agents | External or same monorepo later |
 
