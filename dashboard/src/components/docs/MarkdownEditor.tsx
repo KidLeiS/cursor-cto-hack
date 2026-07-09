@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { DocumentationAsset } from "../../../../shared/types";
 
 const InitializedMarkdownEditor = dynamic(
   () => import("./InitializedMarkdownEditor"),
@@ -14,10 +15,12 @@ export function MarkdownEditor({
   nodeId,
   markdown,
   onChange,
+  onAssetUploaded,
 }: {
   nodeId: string;
   markdown: string;
   onChange: (markdown: string) => void;
+  onAssetUploaded?: (asset: DocumentationAsset & { signed_url: string }) => void;
 }) {
   return (
     <InitializedMarkdownEditor
@@ -25,6 +28,7 @@ export function MarkdownEditor({
       nodeId={nodeId}
       markdown={markdown}
       onChange={onChange}
+      onAssetUploaded={onAssetUploaded}
     />
   );
 }

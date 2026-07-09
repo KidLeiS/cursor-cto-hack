@@ -19,6 +19,10 @@ import {
   updateDocumentationContent,
   uploadDocumentationImage,
 } from "@/lib/documentation-actions";
+import {
+  persistDocumentationAssetUrls,
+  resolveDocumentationAssetUrls,
+} from "@/lib/documentation-markdown";
 import { updateWorkplanStep } from "@/lib/actions";
 import type { DashboardBundle } from "@/lib/data";
 import { formatTaskTrackerDate } from "@/lib/task-tracker-calendar";
@@ -495,7 +499,7 @@ export function SushicodeWorkspace({
     }
     setEditorTitle(editorNode.title);
     setEditorSlug(editorNode.slug);
-    setEditorMarkdown(editorNode.markdown);
+    setEditorMarkdown(resolveDocumentationAssetUrls(editorNode.markdown));
 
     if (!backendEnabled || editorNode.id.startsWith("demo-")) {
       setEditorAssets([]);
@@ -856,7 +860,7 @@ export function SushicodeWorkspace({
                 ...node,
                 title: editorTitle.trim(),
                 slug: slugify(editorSlug),
-                markdown: editorMarkdown,
+                markdown: persistDocumentationAssetUrls(editorMarkdown),
               }
             : node,
         ),
@@ -872,7 +876,7 @@ export function SushicodeWorkspace({
       expected_lock_version: editorNode.lock_version,
       title: editorTitle.trim(),
       slug: slugify(editorSlug),
-      markdown: editorMarkdown,
+      markdown: persistDocumentationAssetUrls(editorMarkdown),
     });
     setEditorBusy(false);
     if (!result.ok || !result.data) {
@@ -1611,6 +1615,9 @@ export function SushicodeWorkspace({
               <MarkdownEditor
                 markdown={editorMarkdown}
                 nodeId={editorNode.id}
+                onAssetUploaded={(asset) =>
+                  setEditorAssets((current) => [...current, asset])
+                }
                 onChange={setEditorMarkdown}
               />
             </div>
