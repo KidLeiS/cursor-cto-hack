@@ -1,22 +1,17 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
-import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { DM_Mono, Lato } from "next/font/google";
 import "@mdxeditor/editor/style.css";
 import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
-const display = Fraunces({
+const body = Lato({
   subsets: ["latin"],
-  variable: "--font-display-loaded",
-});
-
-const body = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "700", "900"],
   variable: "--font-body-loaded",
 });
 
-const mono = IBM_Plex_Mono({
+const mono = DM_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
   variable: "--font-mono-loaded",
@@ -30,12 +25,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${display.variable} ${body.variable} ${mono.variable}`}>
+      <body className={`${body.variable} ${mono.variable}`}>
         <style>{`
           :root {
-            --font-display: var(--font-display-loaded), "Times New Roman", serif;
-            --font-body: var(--font-body-loaded), "Helvetica Neue", sans-serif;
-            --font-mono: var(--font-mono-loaded), ui-monospace, monospace;
+            --font-display: var(--font-body-loaded), "Lato", sans-serif;
+            --font-body: var(--font-body-loaded), "Lato", sans-serif;
+            --font-mono: var(--font-mono-loaded), "DM Mono", ui-monospace, monospace;
           }
         `}</style>
         {children}

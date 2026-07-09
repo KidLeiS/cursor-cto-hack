@@ -11,6 +11,7 @@ import {
   type ReactNode,
   type WheelEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import { MarkdownEditor } from "@/components/docs/MarkdownEditor";
 import {
   createDocumentationNode,
@@ -23,22 +24,27 @@ import {
   persistDocumentationAssetUrls,
   resolveDocumentationAssetUrls,
 } from "@/lib/documentation-markdown";
-import { updateWorkplanStep } from "@/lib/actions";
 import type { DashboardBundle } from "@/lib/data";
+import {
+  buildRoadmapTree,
+  estimatedRemainingMinutes,
+  formatMinutes,
+  type RoadmapBundle,
+  type RoadmapTaskNode,
+} from "@/lib/roadmap";
 import { formatTaskTrackerDate } from "@/lib/task-tracker-calendar";
 import type {
   DocumentationAsset,
   DocumentationNode,
-  Feature,
   RoadmapTask,
   TaskTrackerItem,
   TaskTrackerPriority,
-  WorkplanStep,
 } from "../../../shared/types";
 
 type WorkspaceProps = {
   bundle: DashboardBundle;
   documentationNodes: DocumentationNode[];
+  roadmapBundle: RoadmapBundle;
   taskTrackerItems: TaskTrackerItem[];
 };
 
@@ -46,6 +52,10 @@ type Point = { x: number; y: number };
 type NodeSize = { width: number; height: number };
 type WorkspaceAsset = DocumentationAsset & { signed_url: string };
 type Granularity = "hours" | "days" | "weeks";
+type NotesTab = "overview" | "hours" | "days" | "time";
+type LeftPanelMode = "chat" | "notes";
+type WorkspaceModal = "task" | "feature" | "node" | null;
+type NodeCreationType = "folder" | "document";
 type TimelineItem = {
   id: string;
   title: string;
@@ -56,8 +66,8 @@ type TimelineItem = {
   scheduledFor: string;
 };
 
-const NODE_WIDTH = 256;
-const NODE_HEIGHT = 138;
+const NODE_WIDTH = 300;
+const NODE_HEIGHT = 170;
 const TRACKER_PRIORITY: Record<TaskTrackerPriority, number> = {
   urgent: 5,
   high: 4,
@@ -112,6 +122,10 @@ function priorityFromLevel(level: number): TaskTrackerPriority {
   return "low";
 }
 
+type RoadmapApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; status: number };
+
 async function trackerRequest<T>(
   url: string,
   init: RequestInit,
@@ -132,6 +146,29 @@ async function trackerRequest<T>(
     return body;
   } catch {
     return { ok: false, error: "The task tracker could not be reached." };
+  }
+}
+
+async function roadmapRequest<T>(
+  url: string,
+  init: RequestInit,
+): Promise<RoadmapApiResult<T>> {
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init.headers },
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: body.error || `Roadmap request failed (${response.status}).`,
+        status: response.status,
+      };
+    }
+    return { ok: true, data: body.data as T };
+  } catch {
+    return { ok: false, error: "The roadmap could not be reached.", status: 0 };
   }
 }
 
@@ -165,7 +202,7 @@ function Icon({
     | "grid"
     | "hide-left"
     | "hide-right"
-    | "microphone"
+    | "mic"
     | "more"
     | "move"
     | "note"
@@ -216,9 +253,9 @@ function Icon({
         <path d="M15 4v16M7 8l4 4-4 4" />
       </>
     ),
-    microphone: (
+    mic: (
       <>
-        <rect x="9" y="3" width="6" height="12" rx="3" />
+        <rect x="9" y="3" width="6" height="11" rx="3" />
         <path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" />
       </>
     ),
@@ -376,8 +413,8 @@ function initialPositions(nodes: DocumentationNode[]): Record<string, Point> {
 
 function nodeSize(node: DocumentationNode): NodeSize {
   return {
-    width: node.canvas_width ?? NODE_WIDTH,
-    height: node.canvas_height ?? NODE_HEIGHT,
+    width: Math.max(node.canvas_width ?? NODE_WIDTH, NODE_WIDTH),
+    height: Math.max(node.canvas_height ?? NODE_HEIGHT, NODE_HEIGHT),
   };
 }
 
@@ -401,6 +438,18 @@ function buildTimeline(items: TaskTrackerItem[]): TimelineItem[] {
         TRACKER_PRIORITY[b.priority] - TRACKER_PRIORITY[a.priority],
     )
     .map(trackerTimelineItem);
+}
+
+function findRoadmapNode(
+  nodes: RoadmapTaskNode[],
+  taskId: string,
+): RoadmapTaskNode | null {
+  for (const node of nodes) {
+    if (node.id === taskId) return node;
+    const descendant = findRoadmapNode(node.children, taskId);
+    if (descendant) return descendant;
+  }
+  return null;
 }
 
 function timelineLabel(granularity: Granularity, index: number) {
@@ -429,25 +478,13 @@ function trackerTimelineLabel(
   return formatTaskTrackerDate(item.scheduledFor, today);
 }
 
-function featureProgress(feature: Feature, bundle: DashboardBundle, steps: WorkplanStep[]) {
-  const gates = bundle.gates.filter((gate) => gate.feature_id === feature.id);
-  const plans = new Set(
-    bundle.workplans.filter((plan) => plan.feature_id === feature.id).map((plan) => plan.id),
-  );
-  const featureSteps = steps.filter((step) => plans.has(step.workplan_id));
-  const total = gates.length + featureSteps.length;
-  const complete =
-    gates.filter((gate) => gate.status === "pass").length +
-    featureSteps.filter((step) => step.status === "done").length;
-  if (total) return Math.round((complete / total) * 100);
-  return feature.status === "done" ? 100 : feature.status === "validating" ? 80 : 28;
-}
-
 export function SushicodeWorkspace({
   bundle,
   documentationNodes,
+  roadmapBundle,
   taskTrackerItems,
 }: WorkspaceProps) {
+  const router = useRouter();
   const initialNodes = useMemo(
     () =>
       documentationNodes.length
@@ -489,10 +526,18 @@ export function SushicodeWorkspace({
     origin: Point;
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
-  const taskInputRef = useRef<HTMLInputElement>(null);
+  const taskInputRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [nodeMenuId, setNodeMenuId] = useState<string | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [workspaceModal, setWorkspaceModal] = useState<WorkspaceModal>(null);
+  const [nodeDraft, setNodeDraft] = useState<{
+    type: NodeCreationType;
+    title: string;
+    description: string;
+  }>({ type: "document", title: "", description: "" });
   const [editorNodeId, setEditorNodeId] = useState<string | null>(null);
   const [editorTitle, setEditorTitle] = useState("");
   const [editorSlug, setEditorSlug] = useState("");
@@ -501,26 +546,45 @@ export function SushicodeWorkspace({
   const [editorBusy, setEditorBusy] = useState(false);
 
   const [granularity, setGranularity] = useState<Granularity>("hours");
-  const [priorityMode, setPriorityMode] = useState(false);
+  const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>("chat");
+  const [notesTab, setNotesTab] = useState<NotesTab>("overview");
   const [trackerItems, setTrackerItems] = useState(taskTrackerItems);
   const [timeline, setTimeline] = useState(() => buildTimeline(taskTrackerItems));
   const [openTimelineId, setOpenTimelineId] = useState<string | null>(null);
+  const [attachedNoteId, setAttachedNoteId] = useState<string | null>(null);
   const [taskInput, setTaskInput] = useState("");
   const [parsingTasks, setParsingTasks] = useState(false);
   const [recordingTasks, setRecordingTasks] = useState(false);
   const [transcribingTasks, setTranscribingTasks] = useState(false);
   const [actioningTaskId, setActioningTaskId] = useState<string | null>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
-  const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
+  const [trackerEditDraft, setTrackerEditDraft] = useState<TaskDraft | null>(
+    null,
+  );
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTaskId, setDropTaskId] = useState<string | null>(null);
   const [actionReceipt, setActionReceipt] =
     useState<TaskActionReceipt | null>(null);
+  const [modalTaskDraft, setModalTaskDraft] = useState({
+    title: "",
+    details: "",
+    scheduledFor: localIsoDate(),
+    priority: "medium" as TaskTrackerPriority,
+  });
 
-  const [features, setFeatures] = useState(bundle.features);
-  const [steps, setSteps] = useState(bundle.steps);
-  const [activeFeatureId, setActiveFeatureId] = useState<string | null>(null);
-  const [showSuggestion, setShowSuggestion] = useState(true);
+  const [roadmapTasks, setRoadmapTasks] = useState(roadmapBundle.tasks);
+  const [roadmapDependencies] = useState(roadmapBundle.dependencies);
+  const [activeRoadmapTaskId, setActiveRoadmapTaskId] = useState<string | null>(
+    null,
+  );
+  const [updatingRoadmapTaskId, setUpdatingRoadmapTaskId] = useState<
+    string | null
+  >(null);
+  const [featureDraft, setFeatureDraft] = useState<{
+    title: string;
+    summary: string;
+    status: RoadmapTask["status"];
+  }>({ title: "", summary: "", status: "planned" });
 
   useEffect(
     () => () => {
@@ -562,10 +626,23 @@ export function SushicodeWorkspace({
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
   const editorNode = nodes.find((node) => node.id === editorNodeId) ?? null;
   const today = localIsoDate();
-  const orderedTimeline = [...timeline].sort((a, b) =>
-    priorityMode ? b.priority - a.priority : timeline.indexOf(a) - timeline.indexOf(b),
+  const prioritizedTimeline = [...timeline].sort((a, b) => b.priority - a.priority);
+  const orderedTimeline =
+    notesTab === "overview"
+      ? prioritizedTimeline.slice(0, 5)
+      : notesTab === "time"
+        ? [...timeline].sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor))
+        : timeline;
+  const attachedNote = timeline.find((item) => item.id === attachedNoteId) ?? null;
+  const roadmapTree = useMemo(
+    () => buildRoadmapTree(roadmapTasks),
+    [roadmapTasks],
   );
-  const activeFeature = features.find((feature) => feature.id === activeFeatureId) ?? null;
+  const activeRoadmapTask =
+    roadmapTasks.find((task) => task.id === activeRoadmapTaskId) ?? null;
+  const activeRoadmapNode = activeRoadmapTaskId
+    ? findRoadmapNode(roadmapTree.roots, activeRoadmapTaskId)
+    : null;
 
   useEffect(() => {
     if (!editorNode) {
@@ -798,9 +875,12 @@ export function SushicodeWorkspace({
     setZoom((current) => Math.min(1.35, Math.max(0.52, current - event.deltaY * 0.001)));
   }
 
-  async function addChild() {
-    const title = window.prompt("Name this note or folder");
-    if (!title?.trim()) return;
+  async function addChild(
+    title: string,
+    description: string,
+    type: NodeCreationType,
+  ) {
+    if (!title.trim()) return;
     const parent = selectedNode;
     const siblings = childrenByParent.get(parent?.id ?? null) ?? [];
     const point = parent
@@ -815,13 +895,17 @@ export function SushicodeWorkspace({
       parent_id: parent?.id ?? null,
       slug: slugify(title),
       title: title.trim(),
-      markdown: "New note — add context here.",
+      markdown:
+        description.trim() ||
+        (type === "folder"
+          ? "A new space for related documents and notes."
+          : "New document — add context here."),
       sort_order: siblings.length,
       canvas_x: point.x,
       canvas_y: point.y,
       canvas_width: NODE_WIDTH,
       canvas_height: NODE_HEIGHT,
-      canvas_metadata: {},
+      canvas_metadata: { kind: type },
       content_version: 1,
       lock_version: 1,
       created_at: new Date().toISOString(),
@@ -840,6 +924,7 @@ export function SushicodeWorkspace({
         canvas_y: point.y,
         canvas_width: NODE_WIDTH,
         canvas_height: NODE_HEIGHT,
+        canvas_metadata: draft.canvas_metadata,
       });
       if (!result.ok) {
         setToast(result.error);
@@ -850,7 +935,7 @@ export function SushicodeWorkspace({
         setPositions((current) => ({ ...current, [result.data!.id]: point }));
         if (parent) setExpanded((current) => new Set(current).add(parent.id));
         setSelectedId(result.data.id);
-        setToast("New note added");
+        setToast(`${type === "folder" ? "Folder" : "Document"} added`);
         return;
       }
     }
@@ -858,7 +943,21 @@ export function SushicodeWorkspace({
     setPositions((current) => ({ ...current, [draft.id]: point }));
     if (parent) setExpanded((current) => new Set(current).add(parent.id));
     setSelectedId(draft.id);
-    setToast("New note added");
+    setToast(`${type === "folder" ? "Folder" : "Document"} added`);
+  }
+
+  function openNodeForm(type: NodeCreationType) {
+    setNodeDraft({ type, title: "", description: "" });
+    setAddMenuOpen(false);
+    setNodeMenuId(null);
+    setWorkspaceModal("node");
+  }
+
+  async function submitNodeDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!nodeDraft.title.trim()) return;
+    await addChild(nodeDraft.title, nodeDraft.description, nodeDraft.type);
+    setWorkspaceModal(null);
   }
 
   async function deleteSelected() {
@@ -1087,13 +1186,12 @@ export function SushicodeWorkspace({
     setToast("Image archived");
   }
 
-  async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const input = taskInput.trim();
+  async function submitTaskInput(inputValue: string) {
+    const input = inputValue.trim();
     if (input.length < 3) {
-      setToast("Describe the task before adding it");
+      setToast("Describe the note before adding it");
       taskInputRef.current?.focus();
-      return;
+      return false;
     }
 
     setParsingTasks(true);
@@ -1108,17 +1206,61 @@ export function SushicodeWorkspace({
     setParsingTasks(false);
     if (!result.ok) {
       setToast(result.error);
-      return;
+      return false;
     }
 
     const nextItems = [...trackerItems, ...result.data];
     setTrackerItems(nextItems);
     setTimeline(buildTimeline(nextItems));
-    setOpenTimelineId(result.data[0] ? `tracker-${result.data[0].id}` : null);
+    setOpenTimelineId(null);
     setTaskInput("");
     setToast(
-      `${result.data.length} ${result.data.length === 1 ? "task" : "tasks"} added to the timeline`,
+      `${result.data.length} ${result.data.length === 1 ? "note" : "notes"} added`,
     );
+    return true;
+  }
+
+  async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const prompt = attachedNote
+      ? [
+          `Attached note: ${attachedNote.title}`,
+          attachedNote.note,
+          `Direction: ${taskInput}`,
+        ].join("\n\n")
+      : taskInput;
+    if (await submitTaskInput(prompt)) setAttachedNoteId(null);
+  }
+
+  async function addStructuredTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const prompt = [
+      modalTaskDraft.title,
+      modalTaskDraft.details,
+      `Schedule for ${modalTaskDraft.scheduledFor}.`,
+      `Priority: ${modalTaskDraft.priority}.`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (await submitTaskInput(prompt)) {
+      setModalTaskDraft({
+        title: "",
+        details: "",
+        scheduledFor: localIsoDate(),
+        priority: "medium",
+      });
+      setWorkspaceModal(null);
+      setLeftPanelMode("notes");
+      setNotesTab("overview");
+    }
+  }
+
+  function attachNoteToPrompt(item: TimelineItem) {
+    setAttachedNoteId(item.id);
+    setOpenTimelineId(null);
+    setLeftPanelMode("chat");
+    setTaskInput("");
+    window.setTimeout(() => taskInputRef.current?.focus(), 0);
   }
 
   function replaceTrackerItem(updated: TaskTrackerItem) {
@@ -1134,7 +1276,7 @@ export function SushicodeWorkspace({
           : candidate,
       ),
     );
-    setTaskDraft(taskDraftFrom(updated));
+    setTrackerEditDraft(taskDraftFrom(updated));
   }
 
   async function mutateTrackerItem(
@@ -1157,9 +1299,9 @@ export function SushicodeWorkspace({
   }
 
   async function saveTaskDraft(item: TaskTrackerItem) {
-    if (!taskDraft) return;
-    const estimate = taskDraft.estimate_minutes.trim()
-      ? Number(taskDraft.estimate_minutes)
+    if (!trackerEditDraft) return;
+    const estimate = trackerEditDraft.estimate_minutes.trim()
+      ? Number(trackerEditDraft.estimate_minutes)
       : null;
     if (estimate !== null && (!Number.isInteger(estimate) || estimate <= 0)) {
       setToast("Effort must be a positive number of minutes.");
@@ -1168,11 +1310,11 @@ export function SushicodeWorkspace({
     const updated = await mutateTrackerItem(item, {
       operation: "edit",
       expected_lock_version: item.lock_version,
-      title: taskDraft.title,
-      description: taskDraft.description,
-      priority: taskDraft.priority,
-      scheduled_for: taskDraft.scheduled_for,
-      due_on: taskDraft.due_on || null,
+      title: trackerEditDraft.title,
+      description: trackerEditDraft.description,
+      priority: trackerEditDraft.priority,
+      scheduled_for: trackerEditDraft.scheduled_for,
+      due_on: trackerEditDraft.due_on || null,
       estimate_minutes: estimate,
     });
     if (updated) setToast("Task edits saved");
@@ -1301,43 +1443,188 @@ export function SushicodeWorkspace({
       agent_summary: result.data.agent_summary,
       roadmap: result.data.roadmap,
     });
+    setRoadmapTasks((current) => {
+      const roadmap = result.data.roadmap;
+      return current.some((task) => task.id === roadmap.id)
+        ? current.map((task) => (task.id === roadmap.id ? roadmap : task))
+        : [...current, roadmap];
+    });
+    setActiveRoadmapTaskId(result.data.roadmap.id);
+    router.refresh();
     setToast(
-      `Updated ${changedNodes.length} ${changedNodes.length === 1 ? "document" : "documents"} · roadmap ready`,
+      `Updated ${changedNodes.length} ${changedNodes.length === 1 ? "document" : "documents"} · roadmap task ready`,
     );
   }
 
-  function createFeature() {
-    const title = window.prompt("Feature name");
-    if (!title?.trim()) return;
-    const now = new Date().toISOString();
-    setFeatures((current) => [
-      ...current,
-      {
-        id: `local-feature-${Date.now()}`,
-        project_id: bundle.project.id,
-        slug: slugify(title),
-        title: title.trim(),
-        summary: "Human-created feature awaiting implementation detail.",
-        status: "planned",
-        frontend_notes: null,
-        backend_notes: null,
-        module_ids: [],
-        created_at: now,
-        updated_at: now,
-      },
-    ]);
-    setToast("Feature added to the plan");
+  async function createFeature(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!featureDraft.title.trim()) return;
+    void createRoadmapTaskFromDraft();
   }
 
-  async function toggleStep(step: WorkplanStep) {
-    const status = step.status === "done" ? "ready" : "done";
-    setSteps((current) =>
-      current.map((item) => (item.id === step.id ? { ...item, status } : item)),
-    );
-    if (bundle.source === "supabase") {
-      const result = await updateWorkplanStep({ ...step, status });
-      if (!result.ok) setToast(result.error);
+  async function updateRoadmapTask(
+    task: RoadmapTask,
+    changes: Partial<
+      Pick<
+        RoadmapTask,
+        | "title"
+        | "description"
+        | "status"
+        | "progress_percent"
+        | "estimate_minutes"
+        | "planning_prompt"
+        | "implementation_prompt"
+        | "validation_gate"
+      >
+    >,
+  ) {
+    setUpdatingRoadmapTaskId(task.id);
+    const result = await roadmapRequest<RoadmapTask>(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        parent_task_id: task.parent_task_id,
+        slug: task.slug,
+        title: changes.title ?? task.title,
+        description:
+          changes.description === undefined ? task.description : changes.description,
+        status: changes.status ?? task.status,
+        progress_percent: changes.progress_percent ?? task.progress_percent,
+        estimate_minutes:
+          changes.estimate_minutes === undefined
+            ? task.estimate_minutes
+            : changes.estimate_minutes,
+        planning_prompt: changes.planning_prompt ?? task.planning_prompt,
+        implementation_prompt:
+          changes.implementation_prompt ?? task.implementation_prompt,
+        validation_gate: changes.validation_gate ?? task.validation_gate,
+        sort_order: task.sort_order,
+        expected_lock_version: task.lock_version,
+        dependency_ids: roadmapDependencies
+          .filter((dependency) => dependency.task_id === task.id)
+          .map((dependency) => dependency.depends_on_task_id),
+      }),
+    });
+    setUpdatingRoadmapTaskId(null);
+    if (!result.ok) {
+      setToast(
+        result.status === 409
+          ? "This roadmap task changed elsewhere. Refresh and review the latest version."
+          : result.error,
+      );
+      return;
     }
+    setRoadmapTasks((current) =>
+      current.map((candidate) =>
+        candidate.id === result.data.id ? result.data : candidate,
+      ),
+    );
+    router.refresh();
+    setToast(
+      result.data.status === "done"
+        ? "Roadmap task completed"
+        : "Roadmap task updated",
+    );
+  }
+
+  async function createRoadmapTaskLocally() {
+    const title = window.prompt("Task title");
+    if (!title?.trim()) return;
+    const description = window.prompt("Short description (optional)", "")?.trim() || null;
+    const result = await roadmapRequest<RoadmapTask>("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        parent_task_id: null,
+        slug: `${slugify(title)}-${Date.now().toString(36)}`,
+        title: title.trim(),
+        description,
+        status: "planned",
+        progress_percent: 0,
+        estimate_minutes: null,
+        planning_prompt: `Plan ${title.trim()} and identify the required dependencies.`,
+        implementation_prompt: `Implement ${title.trim()} according to the approved plan.`,
+        validation_gate: `Validate that ${title.trim()} meets its documented acceptance criteria.`,
+        sort_order: roadmapTree.roots.length,
+        dependency_ids: [],
+      }),
+    });
+    if (!result.ok) {
+      setToast(result.error);
+      return;
+    }
+    setRoadmapTasks((current) => [...current, result.data]);
+    setActiveRoadmapTaskId(result.data.id);
+    router.refresh();
+    setToast("Roadmap task created");
+  }
+
+  async function createRoadmapTaskFromDraft() {
+    const title = featureDraft.title.trim();
+    if (!title) return;
+    const result = await roadmapRequest<RoadmapTask>("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        parent_task_id: null,
+        slug: `${slugify(title)}-${Date.now().toString(36)}`,
+        title,
+        description: featureDraft.summary.trim() || null,
+        status: featureDraft.status,
+        progress_percent: featureDraft.status === "done" ? 100 : 0,
+        estimate_minutes: null,
+        planning_prompt: `Plan ${title} and identify dependencies, risks, and acceptance criteria.`,
+        implementation_prompt: `Implement ${title} according to the approved plan and update the workspace.`,
+        validation_gate: `Validate that ${title} meets the documented outcome and has reviewed evidence.`,
+        sort_order: roadmapTree.roots.length,
+        dependency_ids: [],
+      }),
+    });
+    if (!result.ok) {
+      setToast(result.error);
+      return;
+    }
+    setRoadmapTasks((current) => [...current, result.data]);
+    setActiveRoadmapTaskId(result.data.id);
+    setFeatureDraft({ title: "", summary: "", status: "planned" });
+    setWorkspaceModal(null);
+    router.refresh();
+    setToast("Roadmap task created");
+  }
+
+  async function editRoadmapTaskLocally(task: RoadmapTask) {
+    const title = window.prompt("Task title", task.title);
+    if (title === null || !title.trim()) return;
+    const description = window.prompt("Description", task.description ?? "");
+    if (description === null) return;
+    const estimate = window.prompt(
+      "Estimate in minutes (leave blank for unestimated)",
+      task.estimate_minutes?.toString() ?? "",
+    );
+    if (estimate === null) return;
+    const estimateMinutes = estimate.trim() ? Number(estimate) : null;
+    if (
+      estimateMinutes !== null &&
+      (!Number.isInteger(estimateMinutes) || estimateMinutes <= 0)
+    ) {
+      setToast("Estimate must be a positive number of minutes");
+      return;
+    }
+    const planning = window.prompt("Planning prompt", task.planning_prompt);
+    if (planning === null || !planning.trim()) return;
+    const implementation = window.prompt(
+      "Implementation prompt",
+      task.implementation_prompt,
+    );
+    if (implementation === null || !implementation.trim()) return;
+    const validation = window.prompt("Validation gate", task.validation_gate);
+    if (validation === null || !validation.trim()) return;
+
+    await updateRoadmapTask(task, {
+      title: title.trim(),
+      description: description.trim() || null,
+      estimate_minutes: estimateMinutes,
+      planning_prompt: planning.trim(),
+      implementation_prompt: implementation.trim(),
+      validation_gate: validation.trim(),
+    });
   }
 
   const openTimeline = timeline.find((item) => item.id === openTimelineId) ?? null;
@@ -1350,16 +1637,8 @@ export function SushicodeWorkspace({
       : null;
 
   useEffect(() => {
-    setTaskDraft(openTracker ? taskDraftFrom(openTracker) : null);
+    setTrackerEditDraft(openTracker ? taskDraftFrom(openTracker) : null);
   }, [openTracker?.id, openTracker?.lock_version]);
-
-  const activePlans = new Set(
-    bundle.workplans
-      .filter((plan) => plan.feature_id === activeFeatureId)
-      .map((plan) => plan.id),
-  );
-  const activeSteps = steps.filter((step) => activePlans.has(step.workplan_id));
-
   return (
     <main className="workspace-shell">
       <span className="sr-only">sushicode is code</span>
@@ -1390,7 +1669,7 @@ export function SushicodeWorkspace({
             <Icon name="hide-left" />
           </button>
           <button
-            aria-label={hideRight ? "Show features" : "Hide features"}
+            aria-label={hideRight ? "Show roadmap" : "Hide roadmap"}
             className={hideRight ? "icon-button active" : "icon-button"}
             onClick={() => setHideRight((value) => !value)}
             type="button"
@@ -1445,14 +1724,17 @@ export function SushicodeWorkspace({
 
           {visibleNodes.map((node) => {
             const childCount = (childrenByParent.get(node.id) ?? []).length;
+            const isFolder =
+              childCount > 0 || node.canvas_metadata.kind === "folder";
             const isOpen = expanded.has(node.id);
             const isSelected = node.id === selectedId;
             return (
               <div
                 className={[
                   "ia-node",
-                  childCount ? "folder-node" : "document-node",
+                  isFolder ? "folder-node" : "document-node",
                   isSelected ? "selected" : "",
+                  nodeMenuId === node.id ? "menu-open" : "",
                   drag?.id === node.id ? "dragging" : "",
                   movingId === node.id ? "moving" : "",
                 ]
@@ -1470,26 +1752,68 @@ export function SushicodeWorkspace({
                   height: nodeSize(node).height,
                 }}
               >
-                {childCount ? <div className="folder-tab" /> : null}
+                {isFolder ? <div className="folder-tab" /> : null}
                 <div className="node-header">
                   <span className="node-icon">
-                    <Icon name={childCount ? "folder" : "file"} size={15} />
+                    <Icon name={isFolder ? "folder" : "file"} size={15} />
                   </span>
-                  <span>{childCount ? "Folder" : "Note"}</span>
+                  <span>{isFolder ? "Folder" : "Document"}</span>
                   <button
                     aria-label="More options"
-                    className="node-more"
-                    onClick={(event) => event.stopPropagation()}
+                    aria-expanded={nodeMenuId === node.id}
+                    className={nodeMenuId === node.id ? "node-more active" : "node-more"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedId(node.id);
+                      setNodeMenuId((current) => (current === node.id ? null : node.id));
+                    }}
                     type="button"
                   >
                     <Icon name="more" />
                   </button>
+                  {nodeMenuId === node.id ? (
+                    <div
+                      className="node-config-popover"
+                      onClick={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <div>
+                        <strong>Item settings</strong>
+                        <span>{node.slug}</span>
+                      </div>
+                      <button onClick={() => setEditorNodeId(node.id)} type="button">
+                        <Icon name="note" /> Edit document
+                      </button>
+                      <button onClick={() => openNodeForm("document")} type="button">
+                        <Icon name="plus" /> Add inside
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMovingId(node.id);
+                          setNodeMenuId(null);
+                        }}
+                        type="button"
+                      >
+                        <Icon name="move" /> Move item
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => {
+                          setNodeMenuId(null);
+                          void deleteSelected();
+                        }}
+                        type="button"
+                      >
+                        <Icon name="trash" /> Delete
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
                 <h3>{node.title}</h3>
                 <p>{node.markdown || "No detail added yet."}</p>
                 <div className="node-footer">
                   <span>v{node.content_version}</span>
-                  {childCount ? (
+                  {isFolder ? (
                     <button
                       className="node-open"
                       onClick={(event) => {
@@ -1555,7 +1879,7 @@ export function SushicodeWorkspace({
       </div>
 
       {!hideLeft ? (
-        <aside className="floating-panel timeline-panel">
+        <aside className="floating-panel timeline-panel notes-chat-panel">
           {openTimeline ? (
             <div className="panel-detail">
               <button
@@ -1563,7 +1887,7 @@ export function SushicodeWorkspace({
                 onClick={() => setOpenTimelineId(null)}
                 type="button"
               >
-                <Icon name="arrow-left" /> Timeline
+                <Icon name="arrow-left" /> Notes
               </button>
               <div className="detail-kicker">
                 {trackerTimelineLabel(
@@ -1575,20 +1899,20 @@ export function SushicodeWorkspace({
                 <span className={`kind-dot ${openTimeline.kind}`} />
                 <span>{openTimeline.status}</span>
               </div>
-              {openTracker && taskDraft ? (
+              {openTracker && trackerEditDraft ? (
                 <input
                   aria-label="Task title"
                   className="task-title-input"
                   disabled={!["pending", "failed"].includes(openTracker.status)}
                   maxLength={200}
                   onChange={(event) =>
-                    setTaskDraft((current) =>
+                    setTrackerEditDraft((current) =>
                       current
                         ? { ...current, title: event.target.value }
                         : current,
                     )
                   }
-                  value={taskDraft.title}
+                  value={trackerEditDraft.title}
                 />
               ) : (
                 <h2>{openTimeline.title}</h2>
@@ -1597,7 +1921,7 @@ export function SushicodeWorkspace({
                 Note
                 <textarea
                   onChange={(event) =>
-                    setTaskDraft((current) =>
+                    setTrackerEditDraft((current) =>
                       current
                         ? { ...current, description: event.target.value }
                         : current,
@@ -1607,10 +1931,10 @@ export function SushicodeWorkspace({
                     !openTracker ||
                     !["pending", "failed"].includes(openTracker.status)
                   }
-                  value={taskDraft?.description ?? openTimeline.note}
+                  value={trackerEditDraft?.description ?? openTimeline.note}
                 />
               </label>
-              {openTracker && taskDraft ? (
+              {openTracker && trackerEditDraft ? (
                 <div className="task-schedule-fields">
                   <label>
                     Scheduled
@@ -1621,7 +1945,7 @@ export function SushicodeWorkspace({
                         "completed",
                       ].includes(openTracker.status)}
                       onChange={(event) =>
-                        setTaskDraft((current) =>
+                        setTrackerEditDraft((current) =>
                           current
                             ? {
                                 ...current,
@@ -1631,7 +1955,7 @@ export function SushicodeWorkspace({
                         )
                       }
                       type="date"
-                      value={taskDraft.scheduled_for}
+                      value={trackerEditDraft.scheduled_for}
                     />
                   </label>
                   <label>
@@ -1642,16 +1966,16 @@ export function SushicodeWorkspace({
                         "cancelled",
                         "completed",
                       ].includes(openTracker.status)}
-                      min={taskDraft.scheduled_for}
+                      min={trackerEditDraft.scheduled_for}
                       onChange={(event) =>
-                        setTaskDraft((current) =>
+                        setTrackerEditDraft((current) =>
                           current
                             ? { ...current, due_on: event.target.value }
                             : current,
                         )
                       }
                       type="date"
-                      value={taskDraft.due_on}
+                      value={trackerEditDraft.due_on}
                     />
                   </label>
                   <label>
@@ -1662,7 +1986,7 @@ export function SushicodeWorkspace({
                       }
                       min="1"
                       onChange={(event) =>
-                        setTaskDraft((current) =>
+                        setTrackerEditDraft((current) =>
                           current
                             ? {
                                 ...current,
@@ -1673,7 +1997,7 @@ export function SushicodeWorkspace({
                       }
                       placeholder="—"
                       type="number"
-                      value={taskDraft.estimate_minutes}
+                      value={trackerEditDraft.estimate_minutes}
                     />
                   </label>
                 </div>
@@ -1719,8 +2043,8 @@ export function SushicodeWorkspace({
                       aria-label={`Set priority ${level}`}
                       className={
                         level <=
-                        (taskDraft
-                          ? TRACKER_PRIORITY[taskDraft.priority]
+                        (trackerEditDraft
+                          ? TRACKER_PRIORITY[trackerEditDraft.priority]
                           : openTimeline.priority)
                           ? "filled"
                           : ""
@@ -1731,7 +2055,7 @@ export function SushicodeWorkspace({
                       }
                       key={level}
                       onClick={() =>
-                        setTaskDraft((current) =>
+                        setTrackerEditDraft((current) =>
                           current
                             ? {
                                 ...current,
@@ -1745,6 +2069,13 @@ export function SushicodeWorkspace({
                   ))}
                 </div>
               </div>
+              <button
+                className="attach-detail-button"
+                onClick={() => attachNoteToPrompt(openTimeline)}
+                type="button"
+              >
+                <Icon name="sparkle" /> Attach to prompt
+              </button>
               {openTracker ? (
                 <div className="task-detail-actions">
                   <button
@@ -1760,9 +2091,9 @@ export function SushicodeWorkspace({
                         ? void saveTaskDraft(openTracker)
                         : void rescheduleTrackerItem(
                             openTracker,
-                            taskDraft?.scheduled_for ??
+                            trackerEditDraft?.scheduled_for ??
                               openTracker.scheduled_for,
-                            taskDraft?.due_on || null,
+                            trackerEditDraft?.due_on || null,
                           )
                     }
                     type="button"
@@ -1826,185 +2157,303 @@ export function SushicodeWorkspace({
             </div>
           ) : (
             <>
-              <div className="panel-header">
+              <div className="panel-header notes-panel-header">
                 <div>
-                  <span className="eyebrow">Human plan</span>
-                  <h2>Timeline</h2>
+                  <span className="eyebrow">Human context</span>
+                  <h2>{leftPanelMode === "chat" ? "Notes & chat" : "Timeline"}</h2>
                 </div>
                 <button
-                  className="add-button"
-                  onClick={() => taskInputRef.current?.focus()}
+                  aria-label={leftPanelMode === "chat" ? "Show notes list" : "Show chat"}
+                  className="icon-button subtle panel-more-button"
+                  onClick={() =>
+                    setLeftPanelMode((current) => (current === "chat" ? "notes" : "chat"))
+                  }
                   type="button"
                 >
-                  <Icon name="plus" /> Add
+                  <Icon name={leftPanelMode === "chat" ? "more" : "close"} />
                 </button>
               </div>
-              <form className="timeline-capture" onSubmit={addTimelineItem}>
-                <input
-                  aria-label="Describe tasks"
-                  disabled={parsingTasks}
-                  onChange={(event) => setTaskInput(event.target.value)}
-                  placeholder="Describe a task, deadline, or client request…"
-                  ref={taskInputRef}
-                  value={taskInput}
-                />
-                <button
-                  aria-label="Plan tasks with DeepSeek"
-                  className="task-plan-button"
-                  disabled={
-                    parsingTasks ||
-                    recordingTasks ||
-                    transcribingTasks ||
-                    taskInput.trim().length < 3
-                  }
-                  type="submit"
-                >
-                  <Icon name="sparkle" />
-                </button>
-                <button
-                  aria-label={
-                    recordingTasks
-                      ? "Stop recording"
-                      : transcribingTasks
-                        ? "Transcribing recording"
-                        : "Speak task"
-                  }
-                  aria-pressed={recordingTasks}
-                  className={
-                    recordingTasks
-                      ? "task-mic-button recording"
-                      : "task-mic-button"
-                  }
-                  disabled={parsingTasks || transcribingTasks}
-                  onClick={() => void toggleTaskRecording()}
-                  title={recordingTasks ? "Stop recording" : "Speak task"}
-                  type="button"
-                >
-                  <Icon name="microphone" />
-                </button>
-              </form>
-              <div className="priority-toggle-row">
-                <div>
-                  <Icon name="sparkle" />
-                  <span>Show by priority</span>
-                </div>
-                <button
-                  aria-pressed={priorityMode}
-                  className={priorityMode ? "switch on" : "switch"}
-                  onClick={() => setPriorityMode((value) => !value)}
-                  type="button"
-                >
-                  <span />
-                </button>
-              </div>
-              <div className="timeline-scroll">
-                <div className="timeline-date">
-                  <strong>{granularity === "hours" ? "Today" : granularity === "days" ? "This week" : "Q3"}</strong>
-                  <span>{fullCalendarDate(today)}</span>
-                </div>
-                {orderedTimeline.map((item, index) => {
-                  const tracker = item.id.startsWith("tracker-")
-                    ? trackerItems.find(
-                        (candidate) => `tracker-${candidate.id}` === item.id,
-                      )
-                    : null;
-                  const canDrag =
-                    tracker &&
-                    !["actioning", "cancelled", "completed"].includes(
-                      tracker.status,
-                    );
-                  return (
-                  <div
-                    className={
-                      dropTaskId === tracker?.id
-                        ? "timeline-slot drop-target"
-                        : "timeline-slot"
-                    }
-                    key={item.id}
-                    onDragOver={(event) => {
-                      if (!draggedTaskId || !tracker || !canDrag) return;
-                      event.preventDefault();
-                      setDropTaskId(tracker.id);
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const source = trackerItems.find(
-                        (candidate) => candidate.id === draggedTaskId,
-                      );
-                      setDraggedTaskId(null);
-                      setDropTaskId(null);
-                      if (source && tracker) {
-                        void rescheduleTrackerItem(
-                          source,
-                          tracker.scheduled_for,
-                        );
+              {leftPanelMode === "chat" ? (
+                <>
+                  <section className="notes-carousel-section">
+                    <div className="notes-section-heading">
+                      <span>Recent notes</span>
+                      <button onClick={() => setLeftPanelMode("notes")} type="button">
+                        View all
+                      </button>
+                    </div>
+                    <div className="notes-carousel">
+                      {prioritizedTimeline.slice(0, 4).map((item) => (
+                        <button
+                          className="note-preview-card"
+                          key={item.id}
+                          onClick={() => setOpenTimelineId(item.id)}
+                          type="button"
+                        >
+                          <span className={`kind-dot ${item.kind}`} />
+                          <strong>{item.title}</strong>
+                          <p>{item.note}</p>
+                          <small>
+                            {trackerTimelineLabel(
+                              item,
+                              "days",
+                              timeline.indexOf(item),
+                              today,
+                            )}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  <div className="chat-thread">
+                    <div className="assistant-message">
+                      <span className="assistant-mark"><Icon name="sparkle" /></span>
+                      <div>
+                        <strong>Let’s capture your first note.</strong>
+                        <p>
+                          Tell me what changed, what you are thinking about, or what
+                          should happen next. I’ll structure it and connect it to the
+                          project.
+                        </p>
+                      </div>
+                    </div>
+                    {attachedNote ? (
+                      <div className="attached-note">
+                        <div>
+                          <span>Attached note</span>
+                          <strong>{attachedNote.title}</strong>
+                        </div>
+                        <button
+                          aria-label="Remove attached note"
+                          onClick={() => setAttachedNoteId(null)}
+                          type="button"
+                        >
+                          <Icon name="close" />
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <form className="chat-composer" onSubmit={addTimelineItem}>
+                    {attachedNote ? (
+                      <div className="prompt-presets">
+                        {["Turn into MD", "Generate image", "Create feature", "Make task"].map(
+                          (preset) => (
+                            <button
+                              key={preset}
+                              onClick={() => setTaskInput(`${preset}: `)}
+                              type="button"
+                            >
+                              {preset}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    ) : null}
+                    <textarea
+                      aria-label="Message Sushicode"
+                      disabled={parsingTasks}
+                      onChange={(event) => setTaskInput(event.target.value)}
+                      placeholder={
+                        attachedNote
+                          ? "What should I do with this note?"
+                          : "Write a note or ask Sushicode…"
                       }
-                    }}
-                  >
-                    <span className="time-label">
-                      {priorityMode
-                        ? `P${6 - item.priority}`
-                        : trackerTimelineLabel(item, granularity, index, today)}
-                    </span>
-                    <span className="timeline-rule" />
-                    <button
-                      className={`timeline-card ${item.kind}${draggedTaskId === tracker?.id ? " dragging" : ""}`}
-                      draggable={Boolean(canDrag)}
-                      onDragEnd={() => {
-                        setDraggedTaskId(null);
-                        setDropTaskId(null);
-                      }}
-                      onDragStart={(event) => {
-                        if (!tracker || !canDrag) {
-                          event.preventDefault();
-                          return;
+                      ref={taskInputRef}
+                      rows={3}
+                      value={taskInput}
+                    />
+                    <div className="composer-actions">
+                      <button
+                        aria-label={
+                          recordingTasks
+                            ? "Stop recording"
+                            : transcribingTasks
+                              ? "Transcribing recording"
+                              : "Start voice input"
                         }
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("text/plain", tracker.id);
-                        setDraggedTaskId(tracker.id);
-                      }}
-                      onClick={() => setOpenTimelineId(item.id)}
-                      title={
-                        canDrag
-                          ? "Open task or drag onto another date to reschedule"
-                          : "Open task"
-                      }
+                        aria-pressed={recordingTasks}
+                        className={
+                          recordingTasks
+                            ? "voice-button recording"
+                            : "voice-button"
+                        }
+                        disabled={parsingTasks || transcribingTasks}
+                        onClick={() => void toggleTaskRecording()}
+                        type="button"
+                      >
+                        <Icon name="mic" />
+                      </button>
+                      <button
+                        className="open-item-form"
+                        onClick={() => setWorkspaceModal("task")}
+                        type="button"
+                      >
+                        <Icon name="plus" /> Add item
+                      </button>
+                      <button
+                        aria-label="Send prompt"
+                        className="send-button"
+                        disabled={parsingTasks || taskInput.trim().length < 3}
+                        type="submit"
+                      >
+                        <Icon name="sparkle" />
+                      </button>
+                    </div>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <div className="notes-list-toolbar">
+                    <button
+                      className="timeline-pill"
+                      onClick={() => setLeftPanelMode("chat")}
                       type="button"
                     >
-                      <span className={`kind-dot ${item.kind}`} />
-                      <span className="timeline-copy">
-                        <strong>{item.title}</strong>
-                        <span>{item.note}</span>
-                      </span>
-                      <Icon name="note" />
+                      <Icon name="sparkle" /> Chat
+                    </button>
+                    <button
+                      className="add-button"
+                      onClick={() => setWorkspaceModal("task")}
+                      type="button"
+                    >
+                      <Icon name="plus" /> Add item
                     </button>
                   </div>
-                  );
-                })}
-                <button
-                  className="empty-slot"
-                  onClick={() => taskInputRef.current?.focus()}
-                  type="button"
-                >
-                  <span>{timelineLabel(granularity, orderedTimeline.length)}</span>
-                  <span className="timeline-rule" />
-                  <span className="empty-note">
-                    <Icon name="plus" /> Add a task
-                  </span>
-                </button>
-              </div>
-              <div className="time-tabs">
-                {(["hours", "days", "weeks"] as Granularity[]).map((value) => (
-                  <button
-                    className={granularity === value ? "active" : ""}
-                    key={value}
-                    onClick={() => setGranularity(value)}
-                    type="button"
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
+                  <div className="notes-tabs">
+                    {(
+                      [
+                        ["overview", "Overview"],
+                        ["hours", "By hour"],
+                        ["days", "By day"],
+                        ["time", "By time"],
+                      ] as Array<[NotesTab, string]>
+                    ).map(([value, label]) => (
+                      <button
+                        className={notesTab === value ? "active" : ""}
+                        key={value}
+                        onClick={() => {
+                          setNotesTab(value);
+                          if (value === "hours") setGranularity("hours");
+                          if (value === "days") setGranularity("days");
+                          if (value === "time") setGranularity("weeks");
+                        }}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="notes-list-heading">
+                    <div>
+                      <span>{notesTab === "overview" ? "What’s next" : "Timeline"}</span>
+                      <strong>
+                        {notesTab === "overview"
+                          ? "5 highest-priority notes"
+                          : fullCalendarDate(today)}
+                      </strong>
+                    </div>
+                    <span>{orderedTimeline.length}</span>
+                  </div>
+                  <div className="notes-list">
+                    {orderedTimeline.map((item, index) => {
+                      const tracker = item.id.startsWith("tracker-")
+                        ? trackerItems.find(
+                            (candidate) =>
+                              `tracker-${candidate.id}` === item.id,
+                          )
+                        : null;
+                      const canDrag =
+                        tracker &&
+                        !["actioning", "cancelled", "completed"].includes(
+                          tracker.status,
+                        );
+                      return (
+                      <div
+                        className={
+                          dropTaskId === tracker?.id
+                            ? "notes-list-row drop-target"
+                            : "notes-list-row"
+                        }
+                        key={item.id}
+                        onDragOver={(event) => {
+                          if (!draggedTaskId || !tracker) return;
+                          event.preventDefault();
+                          setDropTaskId(tracker.id);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const source = trackerItems.find(
+                            (candidate) => candidate.id === draggedTaskId,
+                          );
+                          setDraggedTaskId(null);
+                          setDropTaskId(null);
+                          if (source && tracker) {
+                            void rescheduleTrackerItem(
+                              source,
+                              tracker.scheduled_for,
+                            );
+                          }
+                        }}
+                      >
+                        <button
+                          className={
+                            draggedTaskId === tracker?.id
+                              ? "notes-list-card dragging"
+                              : "notes-list-card"
+                          }
+                          draggable={Boolean(canDrag)}
+                          onDragEnd={() => {
+                            setDraggedTaskId(null);
+                            setDropTaskId(null);
+                          }}
+                          onDragStart={(event) => {
+                            if (!tracker || !canDrag) {
+                              event.preventDefault();
+                              return;
+                            }
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", tracker.id);
+                            setDraggedTaskId(tracker.id);
+                          }}
+                          onClick={() => setOpenTimelineId(item.id)}
+                          title={
+                            canDrag
+                              ? "Open task or drag onto another date to reschedule"
+                              : "Open task"
+                          }
+                          type="button"
+                        >
+                          <span className={`kind-dot ${item.kind}`} />
+                          <span>
+                            <strong>{item.title}</strong>
+                            <small>
+                              {trackerTimelineLabel(
+                                item,
+                                notesTab === "hours"
+                                  ? "hours"
+                                  : notesTab === "days"
+                                    ? "days"
+                                    : "weeks",
+                                index,
+                                today,
+                              )}
+                            </small>
+                          </span>
+                          <p>{item.note}</p>
+                        </button>
+                        <button
+                          className="attach-note-button"
+                          onClick={() => attachNoteToPrompt(item)}
+                          type="button"
+                        >
+                          <Icon name="plus" /> Attach to prompt
+                        </button>
+                      </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </>
           )}
         </aside>
@@ -2012,71 +2461,135 @@ export function SushicodeWorkspace({
 
       {!hideRight ? (
         <aside className="floating-panel feature-panel">
-          {activeFeature ? (
+          {activeRoadmapTask ? (
             <div className="feature-detail">
               <button
                 className="back-button"
-                onClick={() => setActiveFeatureId(null)}
+                onClick={() => setActiveRoadmapTaskId(null)}
                 type="button"
               >
-                <Icon name="arrow-left" /> All features
+                <Icon name="arrow-left" /> All roadmap tasks
               </button>
               <div className="detail-feature-heading">
-                <span className={`status-icon ${activeFeature.status}`}>
+                <span className={`status-icon ${activeRoadmapTask.status}`}>
                   <Icon name="sparkle" />
                 </span>
                 <div>
-                  <span className="eyebrow">{activeFeature.status.replace("_", " ")}</span>
-                  <h2>{activeFeature.title}</h2>
+                  <span className="eyebrow">
+                    {activeRoadmapTask.status.replace("_", " ")}
+                  </span>
+                  <h2>{activeRoadmapTask.title}</h2>
                 </div>
               </div>
-              <p className="feature-summary">{activeFeature.summary}</p>
+              <p className="feature-summary">
+                {activeRoadmapTask.description || "No description added yet."}
+              </p>
               <div className="detail-progress">
                 <div>
                   <span>Overall progress</span>
-                  <strong>{featureProgress(activeFeature, bundle, steps)}%</strong>
+                  <strong>{activeRoadmapTask.progress_percent}%</strong>
                 </div>
                 <div className="progress-track large">
                   <span
-                    style={{ width: `${featureProgress(activeFeature, bundle, steps)}%` }}
+                    style={{ width: `${activeRoadmapTask.progress_percent}%` }}
                   />
                 </div>
               </div>
+              <div className="roadmap-estimate">
+                <span>
+                  {formatMinutes(estimatedRemainingMinutes(activeRoadmapTask))} remaining
+                </span>
+                <span>{formatMinutes(activeRoadmapTask.estimate_minutes)} estimated</span>
+              </div>
               <div className="subtask-heading">
-                <strong>Execution plan</strong>
-                <span>{activeSteps.filter((step) => step.status === "done").length}/{activeSteps.length}</span>
+                <strong>Subtasks</strong>
+                <span>
+                  {activeRoadmapNode?.children.filter((task) => task.status === "done").length ?? 0}/
+                  {activeRoadmapNode?.children.length ?? 0}
+                </span>
               </div>
               <div className="subtask-list">
-                {activeSteps.length ? (
-                  activeSteps.map((step) => (
-                    <button
-                      className={step.status === "done" ? "subtask done" : "subtask"}
-                      key={step.id}
-                      onClick={() => void toggleStep(step)}
-                      type="button"
+                {activeRoadmapNode?.children.length ? (
+                  activeRoadmapNode.children.map((task) => (
+                    <div
+                      className={task.status === "done" ? "subtask done" : "subtask"}
+                      key={task.id}
                     >
                       <span className="task-check">
-                        {step.status === "done" ? <Icon name="check" size={13} /> : null}
+                        {task.status === "done" ? <Icon name="check" size={13} /> : null}
                       </span>
                       <span>
-                        <strong>{step.title}</strong>
-                        <small>{step.status.replace("_", " ")}</small>
+                        <strong>{task.title}</strong>
+                        <small>
+                          {task.status.replace("_", " ")} ·{" "}
+                          {formatMinutes(estimatedRemainingMinutes(task))} remaining
+                        </small>
                       </span>
-                    </button>
+                    </div>
                   ))
                 ) : (
-                  <div className="empty-state">The planning agent has not created subtasks yet.</div>
+                  <div className="empty-state">No subtasks have been planned yet.</div>
                 )}
               </div>
-              <div className="agent-footer">
-                <div className="agent-stack">
-                  <span>AI</span>
-                  <span>SW</span>
+              <details className="roadmap-contract">
+                <summary>Execution contract</summary>
+                <div>
+                  <strong>Planning</strong>
+                  <p>{activeRoadmapTask.planning_prompt}</p>
                 </div>
-                <span>2 agents assigned</span>
-                <button type="button">
-                  <Icon name="more" />
+                <div>
+                  <strong>Implementation</strong>
+                  <p>{activeRoadmapTask.implementation_prompt}</p>
+                </div>
+                <div>
+                  <strong>Validation gate</strong>
+                  <p>{activeRoadmapTask.validation_gate}</p>
+                </div>
+              </details>
+              <div className="roadmap-actions">
+                <button
+                  className="button-quiet"
+                  disabled={updatingRoadmapTaskId === activeRoadmapTask.id}
+                  onClick={() => void editRoadmapTaskLocally(activeRoadmapTask)}
+                  type="button"
+                >
+                  Edit task
                 </button>
+                {activeRoadmapTask.status === "planned" ||
+                activeRoadmapTask.status === "ready" ? (
+                  <button
+                    className="add-button"
+                    disabled={updatingRoadmapTaskId === activeRoadmapTask.id}
+                    onClick={() =>
+                      void updateRoadmapTask(activeRoadmapTask, {
+                        status: "in_progress",
+                      })
+                    }
+                    type="button"
+                  >
+                    Start task
+                  </button>
+                ) : null}
+                {activeRoadmapTask.status !== "done" ? (
+                  <button
+                    className="button-quiet"
+                    disabled={updatingRoadmapTaskId === activeRoadmapTask.id}
+                    onClick={() => {
+                      if (window.confirm(`Mark “${activeRoadmapTask.title}” complete?`)) {
+                        void updateRoadmapTask(activeRoadmapTask, {
+                          status: "done",
+                          progress_percent: 100,
+                        });
+                      }
+                    }}
+                    type="button"
+                  >
+                    Mark complete
+                  </button>
+                ) : null}
+                <a className="button-quiet" href={`/tasks/${activeRoadmapTask.id}`}>
+                  View dependency graph
+                </a>
               </div>
             </div>
           ) : (
@@ -2084,99 +2597,322 @@ export function SushicodeWorkspace({
               <div className="panel-header">
                 <div>
                   <span className="eyebrow">Agent plan</span>
-                  <h2>Features</h2>
+                  <h2>Roadmap</h2>
                 </div>
-                <button className="icon-button subtle" onClick={createFeature} type="button">
+                <button
+                  aria-label="Create roadmap task"
+                  className="icon-button subtle"
+                  onClick={() => setWorkspaceModal("feature")}
+                  type="button"
+                >
                   <Icon name="plus" />
                 </button>
               </div>
               <div className="feature-overview">
-                <span>{features.length} active features</span>
-                <button type="button">
-                  <Icon name="search" />
-                </button>
+                <span>{roadmapTree.roots.length} top-level tasks</span>
+                <a href="/tasks" aria-label="Open roadmap">
+                  <Icon name="chevron" />
+                </a>
               </div>
               <div className="feature-scroll">
-                {showSuggestion ? (
-                  <div className="suggestion-card">
-                    <div className="suggestion-heading">
-                      <span><Icon name="sparkle" /> AI suggestion</span>
-                      <small>Review</small>
-                    </div>
-                    <strong>Canvas collaboration presence</strong>
-                    <p>Show who or which agent is actively changing each branch.</p>
-                    <div className="suggestion-actions">
-                      <button onClick={() => setShowSuggestion(false)} type="button">
-                        Dismiss
-                      </button>
-                      <button
-                        className="approve"
-                        onClick={() => {
-                          const now = new Date().toISOString();
-                          setFeatures((current) => [
-                            ...current,
-                            {
-                              id: `approved-${Date.now()}`,
-                              project_id: bundle.project.id,
-                              slug: "canvas-collaboration-presence",
-                              title: "Canvas collaboration presence",
-                              summary: "See humans and agents working in the architecture in real time.",
-                              status: "planned",
-                              frontend_notes: null,
-                              backend_notes: null,
-                              module_ids: [],
-                              created_at: now,
-                              updated_at: now,
-                            },
-                          ]);
-                          setShowSuggestion(false);
-                          setToast("AI feature approved");
-                        }}
-                        type="button"
-                      >
-                        <Icon name="check" /> Approve
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {features.map((feature) => {
-                  const progress = featureProgress(feature, bundle, steps);
+                {roadmapTree.roots.map((task) => {
+                  const remaining = estimatedRemainingMinutes(task);
                   return (
                     <button
                       className="feature-card"
-                      key={feature.id}
-                      onClick={() => setActiveFeatureId(feature.id)}
+                      key={task.id}
+                      onClick={() => setActiveRoadmapTaskId(task.id)}
                       type="button"
                     >
                       <div className="feature-card-top">
-                        <span className={`status-icon ${feature.status}`}>
-                          {feature.status === "done" ? (
+                        <span className={`status-icon ${task.status}`}>
+                          {task.status === "done" ? (
                             <Icon name="check" size={13} />
                           ) : (
                             <Icon name="sparkle" size={13} />
                           )}
                         </span>
-                        <span className="feature-status">{feature.status.replace("_", " ")}</span>
+                        <span className="feature-status">{task.status.replace("_", " ")}</span>
                         <Icon name="chevron" size={14} />
                       </div>
-                      <strong>{feature.title}</strong>
-                      <span className="feature-description">{feature.summary}</span>
+                      <strong>{task.title}</strong>
+                      <span className="feature-description">
+                        {task.description || "Execution details are being prepared."}
+                      </span>
                       <div className="feature-progress">
                         <div className="progress-track">
-                          <span style={{ width: `${progress}%` }} />
+                          <span style={{ width: `${task.progress_percent}%` }} />
                         </div>
-                        <b>{progress}%</b>
+                        <b>{task.progress_percent}%</b>
                       </div>
+                      <span className="roadmap-card-meta">
+                        {task.children.length} subtasks · {formatMinutes(remaining)} remaining
+                      </span>
                     </button>
                   );
                 })}
+                {!roadmapTree.roots.length ? (
+                  <div className="empty-state">
+                    Action a timeline item to add it to the executable roadmap.
+                  </div>
+                ) : null}
               </div>
-              <button className="new-feature" onClick={createFeature} type="button">
-                <Icon name="plus" /> Create feature
+              <button
+                className="new-feature"
+                onClick={() => setWorkspaceModal("feature")}
+                type="button"
+              >
+                <Icon name="plus" /> Create roadmap task
               </button>
             </>
           )}
         </aside>
+      ) : null}
+
+      {workspaceModal ? (
+        <div
+          className="workspace-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setWorkspaceModal(null);
+          }}
+          role="presentation"
+        >
+          {workspaceModal === "task" ? (
+            <form className="workspace-modal" onSubmit={addStructuredTask}>
+              <header>
+                <div>
+                  <span className="eyebrow">New timeline item</span>
+                  <h2>Add a note</h2>
+                </div>
+                <button
+                  aria-label="Close"
+                  className="icon-button"
+                  onClick={() => setWorkspaceModal(null)}
+                  type="button"
+                >
+                  <Icon name="close" />
+                </button>
+              </header>
+              <div className="workspace-form">
+                <label>
+                  Title
+                  <input
+                    autoFocus
+                    onChange={(event) =>
+                      setModalTaskDraft((current) => ({
+                        ...current,
+                        title: event.target.value,
+                      }))
+                    }
+                    placeholder="What needs your attention?"
+                    required
+                    value={modalTaskDraft.title}
+                  />
+                </label>
+                <label>
+                  Context
+                  <textarea
+                    onChange={(event) =>
+                      setModalTaskDraft((current) => ({
+                        ...current,
+                        details: event.target.value,
+                      }))
+                    }
+                    placeholder="Add decisions, constraints, or desired outcome…"
+                    rows={4}
+                    value={modalTaskDraft.details}
+                  />
+                </label>
+                <div className="form-grid">
+                  <label>
+                    Schedule
+                    <input
+                      onChange={(event) =>
+                        setModalTaskDraft((current) => ({
+                          ...current,
+                          scheduledFor: event.target.value,
+                        }))
+                      }
+                      type="date"
+                      value={modalTaskDraft.scheduledFor}
+                    />
+                  </label>
+                  <label>
+                    Priority
+                    <select
+                      onChange={(event) =>
+                        setModalTaskDraft((current) => ({
+                          ...current,
+                          priority: event.target.value as TaskTrackerPriority,
+                        }))
+                      }
+                      value={modalTaskDraft.priority}
+                    >
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <footer>
+                <span>AI will structure this into the project timeline.</span>
+                <button onClick={() => setWorkspaceModal(null)} type="button">Cancel</button>
+                <button className="primary" disabled={parsingTasks} type="submit">
+                  {parsingTasks ? "Adding…" : "Add note"}
+                </button>
+              </footer>
+            </form>
+          ) : null}
+
+          {workspaceModal === "feature" ? (
+            <form className="workspace-modal" onSubmit={createFeature}>
+              <header>
+                <div>
+                  <span className="eyebrow">Agent plan</span>
+                  <h2>Create roadmap task</h2>
+                </div>
+                <button
+                  aria-label="Close"
+                  className="icon-button"
+                  onClick={() => setWorkspaceModal(null)}
+                  type="button"
+                >
+                  <Icon name="close" />
+                </button>
+              </header>
+              <div className="workspace-form">
+                <label>
+                  Task name
+                  <input
+                    autoFocus
+                    onChange={(event) =>
+                      setFeatureDraft((current) => ({
+                        ...current,
+                        title: event.target.value,
+                      }))
+                    }
+                    placeholder="e.g. Collaborative canvas presence"
+                    required
+                    value={featureDraft.title}
+                  />
+                </label>
+                <label>
+                  Outcome and context
+                  <textarea
+                    onChange={(event) =>
+                      setFeatureDraft((current) => ({
+                        ...current,
+                        summary: event.target.value,
+                      }))
+                    }
+                    placeholder="What should be true when this task is complete?"
+                    rows={5}
+                    value={featureDraft.summary}
+                  />
+                </label>
+                <label>
+                  Initial status
+                  <select
+                    onChange={(event) =>
+                      setFeatureDraft((current) => ({
+                        ...current,
+                        status: event.target.value as RoadmapTask["status"],
+                      }))
+                    }
+                    value={featureDraft.status}
+                  >
+                    <option value="planned">Planned</option>
+                    <option value="ready">Ready</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="blocked">Blocked</option>
+                  </select>
+                </label>
+              </div>
+              <footer>
+                <span>The planning agent can expand this into execution steps.</span>
+                <button onClick={() => setWorkspaceModal(null)} type="button">Cancel</button>
+                <button className="primary" type="submit">Create task</button>
+              </footer>
+            </form>
+          ) : null}
+
+          {workspaceModal === "node" ? (
+            <form className="workspace-modal" onSubmit={submitNodeDraft}>
+              <header>
+                <div>
+                  <span className="eyebrow">Information architecture</span>
+                  <h2>Add to canvas</h2>
+                </div>
+                <button
+                  aria-label="Close"
+                  className="icon-button"
+                  onClick={() => setWorkspaceModal(null)}
+                  type="button"
+                >
+                  <Icon name="close" />
+                </button>
+              </header>
+              <div className="workspace-form">
+                <div className="type-segmented" role="group" aria-label="Item type">
+                  {(["folder", "document"] as NodeCreationType[]).map((type) => (
+                    <button
+                      className={nodeDraft.type === type ? "active" : ""}
+                      key={type}
+                      onClick={() =>
+                        setNodeDraft((current) => ({ ...current, type }))
+                      }
+                      type="button"
+                    >
+                      <Icon name={type === "folder" ? "folder" : "file"} />
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                <label>
+                  Name
+                  <input
+                    autoFocus
+                    onChange={(event) =>
+                      setNodeDraft((current) => ({ ...current, title: event.target.value }))
+                    }
+                    placeholder={
+                      nodeDraft.type === "folder" ? "Folder name" : "Document title"
+                    }
+                    required
+                    value={nodeDraft.title}
+                  />
+                </label>
+                <label>
+                  Description
+                  <textarea
+                    onChange={(event) =>
+                      setNodeDraft((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    placeholder="Add a short purpose or starting context…"
+                    rows={4}
+                    value={nodeDraft.description}
+                  />
+                </label>
+                <div className="parent-preview">
+                  <span>Parent</span>
+                  <strong>{selectedNode?.title ?? "Canvas root"}</strong>
+                </div>
+              </div>
+              <footer>
+                <span>You can move and nest this item later.</span>
+                <button onClick={() => setWorkspaceModal(null)} type="button">Cancel</button>
+                <button className="primary" type="submit">
+                  Add {nodeDraft.type}
+                </button>
+              </footer>
+            </form>
+          ) : null}
+        </div>
       ) : null}
 
       {editorNode ? (
@@ -2276,7 +3012,12 @@ export function SushicodeWorkspace({
           <div className="selection-title">
             <span className="node-icon">
               <Icon
-                name={(childrenByParent.get(selectedNode.id) ?? []).length ? "folder" : "file"}
+                name={
+                  (childrenByParent.get(selectedNode.id) ?? []).length ||
+                  selectedNode.canvas_metadata.kind === "folder"
+                    ? "folder"
+                    : "file"
+                }
               />
             </span>
             <span>
@@ -2288,12 +3029,39 @@ export function SushicodeWorkspace({
           <button onClick={() => setEditorNodeId(selectedNode.id)} type="button">
             <Icon name="note" /> Edit
           </button>
-          <button onClick={() => void addChild()} type="button">
-            <Icon name="plus" /> New note
+          <button
+            className={addMenuOpen ? "active" : ""}
+            onClick={() => setAddMenuOpen((current) => !current)}
+            type="button"
+          >
+            <Icon name="plus" /> Add
           </button>
-          <button onClick={() => uploadRef.current?.click()} type="button">
-            <Icon name="upload" /> Upload
-          </button>
+          {addMenuOpen ? (
+            <div className="add-type-menu">
+              <div>
+                <span>Add to {selectedNode.title}</span>
+                <strong>Choose what to create</strong>
+              </div>
+              <button onClick={() => openNodeForm("folder")} type="button">
+                <span className="node-icon"><Icon name="folder" /></span>
+                <span><strong>Folder</strong><small>Group nested project notes</small></span>
+              </button>
+              <button onClick={() => openNodeForm("document")} type="button">
+                <span className="node-icon document"><Icon name="file" /></span>
+                <span><strong>Document</strong><small>Create an editable Markdown note</small></span>
+              </button>
+              <button
+                onClick={() => {
+                  setAddMenuOpen(false);
+                  uploadRef.current?.click();
+                }}
+                type="button"
+              >
+                <span className="node-icon image"><Icon name="upload" /></span>
+                <span><strong>Image</strong><small>Upload and attach a visual</small></span>
+              </button>
+            </div>
+          ) : null}
           <button
             className={movingId === selectedNode.id ? "active" : ""}
             onClick={() =>
