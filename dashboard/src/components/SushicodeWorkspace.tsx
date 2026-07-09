@@ -2520,6 +2520,16 @@ export function SushicodeWorkspace({
                       rows={3}
                       value={taskInput}
                     />
+                    {recordingTasks ? (
+                      <p aria-live="polite" className="voice-recording-hint">
+                        Listening — tap <strong>Stop</strong> to add the transcript
+                        to this text field.
+                      </p>
+                    ) : transcribingTasks ? (
+                      <p aria-live="polite" className="voice-recording-hint">
+                        Transcribing into this text field…
+                      </p>
+                    ) : null}
                     <div className="composer-actions">
                       <button
                         aria-label={
@@ -2537,9 +2547,21 @@ export function SushicodeWorkspace({
                         }
                         disabled={parsingTasks || transcribingTasks}
                         onClick={() => void toggleTaskRecording()}
+                        title={
+                          recordingTasks
+                            ? "Stop recording and add speech to the text field"
+                            : "Record speech into the text field"
+                        }
                         type="button"
                       >
-                        <Icon name="mic" />
+                        {recordingTasks ? (
+                          <>
+                            <Icon name="close" />
+                            <span>Stop</span>
+                          </>
+                        ) : (
+                          <Icon name="mic" />
+                        )}
                       </button>
                       <button
                         className="open-item-form"
