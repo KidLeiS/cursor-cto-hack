@@ -1215,12 +1215,15 @@ export function SushicodeWorkspace({
   async function rescheduleTrackerItem(
     item: TaskTrackerItem,
     scheduledFor: string,
+    requestedDueOn: string | null = item.due_on,
   ) {
-    if (item.scheduled_for === scheduledFor) return;
     const dueOn =
-      item.due_on && item.due_on >= scheduledFor
-        ? item.due_on
-        : scheduledFor;
+      requestedDueOn === null
+        ? null
+        : requestedDueOn >= scheduledFor
+          ? requestedDueOn
+          : scheduledFor;
+    if (item.scheduled_for === scheduledFor && item.due_on === dueOn) return;
     const updated = await mutateTrackerItem(item, {
       operation: "reschedule",
       expected_lock_version: item.lock_version,
@@ -1277,11 +1280,20 @@ export function SushicodeWorkspace({
     });
     if (changedNodes[0]) {
       setSelectedId(changedNodes[0].id);
-      if (changedNodes[0].parent_id) {
-        setExpanded((current) =>
-          new Set(current).add(changedNodes[0].parent_id!),
+      setExpanded((current) => {
+        const next = new Set(current);
+        const byId = new Map(
+          [...nodes, ...changedNodes].map((node) => [node.id, node]),
         );
-      }
+        for (const changed of changedNodes) {
+          let parentId = changed.parent_id;
+          while (parentId) {
+            next.add(parentId);
+            parentId = byId.get(parentId)?.parent_id ?? null;
+          }
+        }
+        return next;
+      });
     }
     setActionReceipt({
       taskId: item.id,
@@ -1739,12 +1751,25 @@ export function SushicodeWorkspace({
                     className="add-button"
                     disabled={
                       savingTaskId !== null ||
-                      !["pending", "failed"].includes(openTracker.status)
+                      ["actioning", "cancelled", "completed"].includes(
+                        openTracker.status,
+                      )
                     }
-                    onClick={() => void saveTaskDraft(openTracker)}
+                    onClick={() =>
+                      ["pending", "failed"].includes(openTracker.status)
+                        ? void saveTaskDraft(openTracker)
+                        : void rescheduleTrackerItem(
+                            openTracker,
+                            taskDraft?.scheduled_for ??
+                              openTracker.scheduled_for,
+                            taskDraft?.due_on || null,
+                          )
+                    }
                     type="button"
                   >
-                    Save
+                    {["pending", "failed"].includes(openTracker.status)
+                      ? "Save"
+                      : "Reschedule"}
                   </button>
                   <button
                     className="add-button"
