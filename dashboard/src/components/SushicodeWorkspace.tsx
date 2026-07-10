@@ -11,6 +11,7 @@ import {
   type ReactNode,
   type WheelEvent,
 } from "react";
+import gsap from "gsap";
 import { useRouter } from "next/navigation";
 import { MarkdownEditor } from "@/components/docs/MarkdownEditor";
 import {
@@ -195,6 +196,7 @@ function Icon({
 }: {
   name:
     | "arrow-left"
+    | "attachment"
     | "check"
     | "chevron"
     | "close"
@@ -218,6 +220,9 @@ function Icon({
 }) {
   const paths: Record<typeof name, ReactNode> = {
     "arrow-left": <path d="m15 18-6-6 6-6" />,
+    attachment: (
+      <path d="m8.5 12.5 6.8-6.8a3.2 3.2 0 0 1 4.5 4.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.1-8.1" />
+    ),
     check: <path d="m5 12 4 4L19 6" />,
     chevron: <path d="m9 18 6-6-6-6" />,
     close: (
@@ -624,6 +629,10 @@ export function SushicodeWorkspace({
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const taskInputRef = useRef<HTMLTextAreaElement>(null);
+  const leftPanelRef = useRef<HTMLElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
+  const sentMessageRef = useRef<HTMLDivElement>(null);
+  const promptAnimationRef = useRef<gsap.core.Timeline | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -659,6 +668,10 @@ export function SushicodeWorkspace({
     top: number;
   } | null>(null);
   const [taskInput, setTaskInput] = useState("");
+  const [sentMessage, setSentMessage] = useState<string | null>(null);
+  const [messageSendState, setMessageSendState] = useState<
+    "sending" | "sent" | null
+  >(null);
   const [parsingTasks, setParsingTasks] = useState(false);
   const [recordingTasks, setRecordingTasks] = useState(false);
   const [transcribingTasks, setTranscribingTasks] = useState(false);
@@ -1462,6 +1475,8 @@ export function SushicodeWorkspace({
   }
 
   async function submitTimelinePrompt() {
+    if (parsingTasks) return;
+    const visibleMessage = taskInput.trim();
     const prompt = attachedNote
       ? [
           `Attached note: ${attachedNote.title}`,
@@ -1469,7 +1484,34 @@ export function SushicodeWorkspace({
           `Direction: ${taskInput}`,
         ].join("\n\n")
       : taskInput;
-    if (await submitTaskInput(prompt)) setAttachedNoteId(null);
+    if (visibleMessage.length >= 3) {
+      setSentMessage(visibleMessage);
+      setMessageSendState("sending");
+      requestAnimationFrame(() => {
+        if (sentMessageRef.current) {
+          gsap.fromTo(
+            sentMessageRef.current,
+            { autoAlpha: 0, y: 18, scale: 0.96 },
+            { autoAlpha: 1, y: 0, scale: 1, duration: 0.36, ease: "power3.out" },
+          );
+        }
+        if (composerRef.current) {
+          gsap.fromTo(
+            composerRef.current,
+            { scale: 1 },
+            { scale: 0.985, duration: 0.1, repeat: 1, yoyo: true, ease: "power1.inOut" },
+          );
+        }
+      });
+    }
+
+    if (await submitTaskInput(prompt)) {
+      setAttachedNoteId(null);
+      setMessageSendState("sent");
+    } else {
+      setSentMessage(null);
+      setMessageSendState(null);
+    }
   }
 
   async function addTimelineItem(event: FormEvent<HTMLFormElement>) {
@@ -1506,7 +1548,53 @@ export function SushicodeWorkspace({
     setOpenTimelineId(null);
     setLeftPanelMode("chat");
     setTaskInput("");
-    window.setTimeout(() => taskInputRef.current?.focus(), 0);
+    requestAnimationFrame(() => {
+      if (leftPanelRef.current) {
+        gsap.fromTo(
+          leftPanelRef.current,
+          { autoAlpha: 0.72, x: -34, scale: 0.985 },
+          { autoAlpha: 1, x: 0, scale: 1, duration: 0.42, ease: "power3.out" },
+        );
+      }
+      taskInputRef.current?.focus();
+    });
+  }
+
+  function animatePromptPreset(preset: string) {
+    const input = taskInputRef.current;
+    if (!input) return;
+    const target = `${preset}: `;
+    const progress = { characters: 0 };
+
+    promptAnimationRef.current?.kill();
+    setTaskInput("");
+    promptAnimationRef.current = gsap
+      .timeline()
+      .to(progress, {
+        characters: target.length,
+        duration: Math.min(0.9, Math.max(0.45, target.length * 0.045)),
+        ease: "none",
+        snap: { characters: 1 },
+        onUpdate: () => {
+          setTaskInput(target.slice(0, progress.characters));
+        },
+        onComplete: () => input?.focus(),
+      })
+      .fromTo(
+        input,
+        {
+          backgroundImage:
+            "linear-gradient(105deg, transparent 25%, rgba(121, 168, 49, 0.3) 48%, transparent 72%)",
+          backgroundPosition: "180% 0",
+          backgroundSize: "220% 100%",
+        },
+        {
+          backgroundPosition: "-120% 0",
+          duration: 0.72,
+          ease: "power2.inOut",
+          clearProps: "backgroundImage,backgroundPosition,backgroundSize",
+        },
+      );
   }
 
   function replaceTrackerItem(updated: TaskTrackerItem) {
@@ -2151,7 +2239,10 @@ export function SushicodeWorkspace({
       </div>
 
       {!hideLeft ? (
-        <aside className="floating-panel timeline-panel notes-chat-panel">
+        <aside
+          className="floating-panel timeline-panel notes-chat-panel"
+          ref={leftPanelRef}
+        >
           {openTimeline ? (
             <div className="panel-detail">
               <button
@@ -2489,30 +2580,46 @@ export function SushicodeWorkspace({
                         </p>
                       </div>
                     </div>
-                    {attachedNote ? (
-                      <div className="attached-note">
-                        <div>
-                          <span>Attached note</span>
-                          <strong>{attachedNote.title}</strong>
-                        </div>
-                        <button
-                          aria-label="Remove attached note"
-                          onClick={() => setAttachedNoteId(null)}
-                          type="button"
-                        >
-                          <Icon name="close" />
-                        </button>
+                    {sentMessage ? (
+                      <div
+                        className={`chat-outgoing-message ${messageSendState ?? ""}`}
+                        ref={sentMessageRef}
+                      >
+                        <p>{sentMessage}</p>
+                        <span>{messageSendState === "sending" ? "Sending…" : "Sent"}</span>
                       </div>
                     ) : null}
                   </div>
-                  <form className="chat-composer" onSubmit={addTimelineItem}>
+                  {attachedNote ? (
+                    <div className="attached-note attached-note-docked">
+                      <span className="attachment-mark" aria-hidden="true">
+                        <Icon name="attachment" />
+                      </span>
+                      <div>
+                        <span>Attached note</span>
+                        <strong>{attachedNote.title}</strong>
+                      </div>
+                      <button
+                        aria-label="Remove attached note"
+                        onClick={() => setAttachedNoteId(null)}
+                        type="button"
+                      >
+                        <Icon name="close" />
+                      </button>
+                    </div>
+                  ) : null}
+                  <form
+                    className="chat-composer"
+                    onSubmit={addTimelineItem}
+                    ref={composerRef}
+                  >
                     {attachedNote ? (
                       <div className="prompt-presets">
                         {["Turn into MD", "Generate image", "Create feature", "Make task"].map(
                           (preset) => (
                             <button
                               key={preset}
-                              onClick={() => setTaskInput(`${preset}: `)}
+                              onClick={() => animatePromptPreset(preset)}
                               type="button"
                             >
                               {preset}
@@ -2598,7 +2705,7 @@ export function SushicodeWorkspace({
                       </button>
                       <button
                         aria-label="Send prompt"
-                        className="send-button"
+                        className={`send-button ${messageSendState === "sending" ? "is-sending" : ""}`}
                         disabled={parsingTasks || taskInput.trim().length < 3}
                         type="submit"
                       >

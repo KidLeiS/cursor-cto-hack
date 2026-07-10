@@ -1,0 +1,1936 @@
+.stage,
+.stage * {
+  box-sizing: border-box;
+}
+
+.stage {
+  --black: #101010;
+  --gray-950: #191919;
+  --gray-900: #242424;
+  --gray-800: #3a3a3a;
+  --gray-700: #525252;
+  --gray-600: #6b6b6b;
+  --gray-500: #878787;
+  --gray-400: #a6a6a6;
+  --gray-300: #c9c9c9;
+  --gray-200: #dedede;
+  --gray-150: #e9e9e9;
+  --gray-100: #f2f2f2;
+  --gray-50: #f8f8f8;
+  --white: #fff;
+  display: grid;
+  min-height: 100svh;
+  overflow: hidden;
+  place-items: center;
+  background: var(--gray-200);
+  color: var(--black);
+  font-family: var(--font-ios-demo), Inter, Arial, sans-serif;
+}
+
+.stage button,
+.stage textarea {
+  font: inherit;
+}
+
+.stage button {
+  color: inherit;
+}
+
+.phone {
+  position: relative;
+  width: min(402px, calc(100vw - 32px));
+  height: min(874px, calc(100svh - 32px));
+  overflow: hidden;
+  border: 2px solid var(--black);
+  border-radius: 48px;
+  background: var(--gray-50);
+}
+
+.statusBar {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 100%;
+  height: 47px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 26px 0;
+  background: var(--gray-50);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.statusBar > div {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusBar svg {
+  width: 16px;
+  height: 16px;
+}
+
+.screen {
+  position: absolute;
+  z-index: 1;
+  inset: 47px 0 20px;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  animation: screenEnter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.largeHeader,
+.compactHeader {
+  flex: 0 0 auto;
+}
+
+.largeHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 18px 22px 12px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--gray-600);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.largeHeader h1,
+.noteEditor h1,
+.taskHero h1 {
+  margin: 0;
+  color: var(--black);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.iconButton {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--gray-300);
+  border-radius: 14px;
+  background: var(--white);
+  cursor: pointer;
+}
+
+.iconButton:active {
+  background: var(--gray-200);
+  transform: scale(0.96);
+}
+
+.iconButton svg {
+  width: 20px;
+  height: 20px;
+}
+
+.temporalNav {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  margin: 0 18px;
+  padding: 3px;
+  border: 1px solid var(--gray-300);
+  border-radius: 16px;
+  background: var(--gray-150);
+}
+
+.temporalNav button {
+  min-width: 0;
+  flex: 1;
+  padding: 9px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--gray-600);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.temporalNav button.activeFilter {
+  background: var(--white);
+  color: var(--black);
+}
+
+.listMeta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 22px 9px;
+  color: var(--gray-600);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.listMeta span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.listMeta svg {
+  width: 13px;
+  height: 13px;
+}
+
+.noteList,
+.taskList,
+.noteDetailScroll,
+.taskDetailScroll {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.noteList::-webkit-scrollbar,
+.taskList::-webkit-scrollbar,
+.noteDetailScroll::-webkit-scrollbar,
+.taskDetailScroll::-webkit-scrollbar,
+.chatBody::-webkit-scrollbar {
+  display: none;
+}
+
+.noteList {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 0 18px 112px;
+}
+
+.swipeRow {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--gray-300);
+  border-radius: 24px;
+  background: var(--gray-900);
+}
+
+.swipeHint {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: grid;
+  width: 102px;
+  align-content: center;
+  justify-items: center;
+  gap: 5px;
+  color: var(--white);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.swipeHint svg {
+  width: 20px;
+  height: 20px;
+}
+
+.noteCard {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  padding: 17px;
+  touch-action: pan-y;
+  border: 0;
+  border-radius: 22px;
+  background: var(--white);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  user-select: none;
+}
+
+.noteCardTop,
+.noteCardFooter,
+.taskCardTop,
+.progressLabel,
+.detailContext,
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.noteCardTop {
+  margin-bottom: 10px;
+  color: var(--gray-600);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.noteCard h2,
+.taskCard h2 {
+  margin: 0;
+  color: var(--black);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.noteCard > p,
+.taskCard > p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 7px 0 13px;
+  color: var(--gray-700);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.noteCardFooter {
+  padding-top: 10px;
+  border-top: 1px solid var(--gray-200);
+  color: var(--gray-500);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.noteCardFooter svg {
+  width: 16px;
+  height: 16px;
+}
+
+.imagePlaceholder {
+  position: relative;
+  display: grid;
+  height: 104px;
+  overflow: hidden;
+  margin: 12px 0;
+  place-content: center;
+  justify-items: center;
+  gap: 5px;
+  border: 1px solid var(--gray-500);
+  border-radius: 14px;
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.imagePlaceholder::before,
+.imagePlaceholder::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 140%;
+  height: 1px;
+  content: "";
+  background: var(--gray-400);
+}
+
+.imagePlaceholder::before {
+  transform: translate(-50%, -50%) rotate(22deg);
+}
+
+.imagePlaceholder::after {
+  transform: translate(-50%, -50%) rotate(-22deg);
+}
+
+.imagePlaceholder svg,
+.imagePlaceholder span {
+  position: relative;
+  z-index: 1;
+  background: var(--gray-100);
+}
+
+.imagePlaceholder svg {
+  width: 22px;
+  height: 22px;
+}
+
+.imagePlaceholder span {
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.compactHeader {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px 12px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.compactHeader > span:not(.agentOnline) {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactHeader .iconButton {
+  width: 40px;
+  height: 40px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.detailContext {
+  padding: 18px 22px 6px;
+  color: var(--gray-600);
+  font-size: 11px;
+}
+
+.noteDetailScroll {
+  padding-bottom: 158px;
+}
+
+.noteEditor {
+  min-height: 460px;
+  padding: 12px 22px 40px;
+  outline: 0;
+}
+
+.noteEditor h1 {
+  margin-bottom: 22px;
+}
+
+.noteEditor p {
+  margin: 0 0 18px;
+  color: var(--gray-800);
+  font-size: 16px;
+  line-height: 1.62;
+}
+
+.noteEditor:focus {
+  background: var(--white);
+}
+
+.editorToolbar {
+  position: absolute;
+  z-index: 10;
+  right: 12px;
+  bottom: 72px;
+  left: 12px;
+  display: flex;
+  height: 58px;
+  align-items: center;
+  gap: 2px;
+  padding: 7px;
+  border: 1px solid var(--gray-300);
+  border-radius: 19px;
+  background: var(--white);
+}
+
+.editorToolbar .iconButton {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+}
+
+.editorToolbar .activeTool {
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 22px;
+  margin: 0 3px;
+  background: var(--gray-300);
+}
+
+.savedState {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  color: var(--gray-600);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.savedState svg {
+  width: 14px;
+  height: 14px;
+}
+
+.agentOnline {
+  width: 10px;
+  height: 10px;
+  justify-self: center;
+  border: 2px solid var(--gray-50);
+  border-radius: 50%;
+  outline: 1px solid var(--gray-700);
+  background: var(--gray-900);
+}
+
+.chatBody {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 18px;
+  scrollbar-width: none;
+}
+
+.assistantBubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-right: 20px;
+}
+
+.assistantIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--gray-300);
+  border-radius: 11px;
+  background: var(--white);
+}
+
+.assistantIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.assistantBubble strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.assistantBubble p {
+  margin: 5px 0 0;
+  color: var(--gray-700);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.humanBubble {
+  width: fit-content;
+  max-width: 82%;
+  margin: 18px 0 0 auto;
+  padding: 12px 14px;
+  border-radius: 18px 18px 5px 18px;
+  background: var(--gray-900);
+  color: var(--white);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: messageEnter 220ms ease-out both;
+}
+
+.chatDock {
+  flex: 0 0 auto;
+  padding: 8px 12px 11px;
+}
+
+.attachedNote {
+  display: grid;
+  grid-template-columns: 32px 1fr 18px;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--gray-300);
+  border-radius: 15px;
+  background: var(--gray-100);
+}
+
+.attachedNote > svg:first-child {
+  width: 19px;
+  height: 19px;
+  justify-self: center;
+}
+
+.attachedNote > svg:last-child {
+  width: 15px;
+  height: 15px;
+  color: var(--gray-600);
+}
+
+.attachedNote div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.attachedNote span {
+  color: var(--gray-600);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.attachedNote strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestions {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 0 2px 8px;
+  scrollbar-width: none;
+}
+
+.suggestions button {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--gray-300);
+  border-radius: 999px;
+  background: var(--white);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.chatComposer {
+  display: flex;
+  min-height: 92px;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--gray-400);
+  border-radius: 22px;
+  background: var(--white);
+}
+
+.chatComposer textarea {
+  min-width: 0;
+  min-height: 58px;
+  flex: 1;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--black);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.chatComposer textarea::placeholder {
+  color: var(--gray-500);
+}
+
+.chatComposer > div {
+  display: flex;
+  gap: 4px;
+}
+
+.chatComposer .iconButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+}
+
+.chatComposer .sendButton {
+  border-color: var(--gray-900);
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.liveBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--gray-300);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--gray-700);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.liveBadge span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gray-900);
+}
+
+.progressSummary {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0 18px 13px;
+  border: 1px solid var(--gray-300);
+  border-radius: 20px;
+  background: var(--white);
+}
+
+.progressSummary div {
+  display: grid;
+  gap: 2px;
+  padding: 13px 10px;
+  text-align: center;
+}
+
+.progressSummary div + div {
+  border-left: 1px solid var(--gray-200);
+}
+
+.progressSummary strong {
+  font-size: 20px;
+  letter-spacing: -0.04em;
+}
+
+.progressSummary span {
+  color: var(--gray-600);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.taskList {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 0 18px 112px;
+}
+
+.taskCard {
+  padding: 16px;
+  border: 1px solid var(--gray-300);
+  border-radius: 24px;
+  background: var(--white);
+  cursor: pointer;
+  text-align: left;
+}
+
+.taskCardTop {
+  justify-content: flex-start;
+  margin-bottom: 12px;
+  color: var(--gray-600);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.taskGlyph {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.taskGlyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+.taskCardTop > svg {
+  width: 17px;
+  height: 17px;
+  margin-left: auto;
+}
+
+.progressLabel {
+  margin: 12px 0 7px;
+  color: var(--gray-600);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.progressLabel strong {
+  color: var(--gray-900);
+  font-size: 11px;
+}
+
+.progressTrack {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--gray-200);
+}
+
+.progressTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gray-900);
+}
+
+.taskDetailScroll {
+  padding: 0 18px 112px;
+}
+
+.taskHero {
+  padding: 18px 4px 22px;
+}
+
+.taskHeroIcon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.taskHeroIcon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.taskHero > p:last-of-type {
+  margin: 10px 0 16px;
+  color: var(--gray-700);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.heroProgress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.heroProgress strong {
+  font-size: 13px;
+}
+
+.contextGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  margin-bottom: 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: 22px;
+  background: var(--white);
+}
+
+.contextGrid > div {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 5px 7px;
+  padding: 14px;
+}
+
+.contextGrid > div:nth-child(3) {
+  border-left: 1px solid var(--gray-200);
+}
+
+.contextGrid .fullContext {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.contextGrid svg {
+  width: 18px;
+  height: 18px;
+}
+
+.contextGrid span {
+  align-self: center;
+  color: var(--gray-600);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.contextGrid p,
+.contextGrid strong {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  color: var(--gray-800);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.contextGrid strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailSection,
+.agentNote {
+  margin-bottom: 12px;
+  padding: 15px;
+  border: 1px solid var(--gray-300);
+  border-radius: 22px;
+  background: var(--white);
+}
+
+.sectionHeading {
+  margin-bottom: 12px;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.sectionHeading > span {
+  color: var(--gray-600);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.sectionHeading svg {
+  width: 18px;
+  height: 18px;
+  color: var(--gray-600);
+}
+
+.stackList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stackList span {
+  padding: 7px 9px;
+  border: 1px solid var(--gray-300);
+  border-radius: 10px;
+  background: var(--gray-100);
+  color: var(--gray-800);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.subtaskList {
+  display: grid;
+  gap: 13px;
+}
+
+.subtask {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.subtask > svg {
+  width: 19px;
+  height: 19px;
+  color: var(--gray-700);
+}
+
+.subtask > div {
+  display: grid;
+  gap: 3px;
+}
+
+.subtask strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.subtask span {
+  margin-bottom: 3px;
+  color: var(--gray-600);
+  font-size: 9px;
+}
+
+.subtask .progressTrack {
+  height: 4px;
+}
+
+.subtask b {
+  color: var(--gray-600);
+  font-size: 9px;
+}
+
+.agentNote {
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.agentNote > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.agentNote svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agentNote span {
+  color: var(--gray-300);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agentNote p {
+  margin: 12px 0 14px;
+  color: var(--gray-150);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.agentNote button {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--gray-600);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--white);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tabBar {
+  position: absolute;
+  z-index: 30;
+  right: 18px;
+  bottom: 22px;
+  left: 18px;
+  display: grid;
+  height: 62px;
+  grid-template-columns: 1fr 1fr;
+  padding: 5px;
+  border: 1px solid var(--gray-400);
+  border-radius: 22px;
+  background: var(--gray-150);
+}
+
+.tabIndicator {
+  position: absolute;
+  z-index: 0;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: calc(50% - 5px);
+  border-radius: 17px;
+  background: var(--gray-900);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tabIndicatorProgress {
+  transform: translateX(100%);
+}
+
+.tabBar button {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.tabBar button[aria-pressed="true"] {
+  color: var(--white);
+}
+
+.tabBar svg {
+  width: 23px;
+  height: 23px;
+}
+
+.homeIndicator {
+  position: absolute;
+  z-index: 40;
+  bottom: 7px;
+  left: 50%;
+  width: 112px;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: var(--black);
+}
+
+.prototypeHint {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  width: 220px;
+  padding: 14px;
+  border: 1px solid var(--gray-500);
+  border-radius: 18px;
+  background: var(--gray-100);
+}
+
+.prototypeHint span {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.prototypeHint p {
+  margin: 5px 0 0;
+  color: var(--gray-700);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Refined mobile system: restrained corners, paper notes, and denser dev tooling. */
+.stage {
+  --paper: #fffceb;
+  --paper-strong: #f6efc9;
+  --paper-line: rgba(113, 102, 47, 0.1);
+}
+
+.phone {
+  border-radius: 40px;
+}
+
+.screen {
+  contain: layout paint;
+  animation-duration: 460ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.screenNotes {
+  animation-name: screenEnterFromLeft;
+}
+
+.screenProgress {
+  animation-name: screenEnterFromRight;
+}
+
+.iconButton {
+  border-radius: 10px;
+  transition:
+    background 220ms ease,
+    transform 220ms ease;
+}
+
+.temporalNav {
+  border-radius: 11px;
+}
+
+.temporalNav button {
+  border-radius: 8px;
+  transition:
+    background 320ms ease,
+    color 320ms ease;
+}
+
+.notesOverview,
+.taskHomeScroll {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 18px 112px;
+  scrollbar-width: none;
+}
+
+.notesOverview::-webkit-scrollbar,
+.taskHomeScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.thinkingSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  margin-bottom: 20px;
+  border: 1px solid var(--gray-900);
+  border-radius: 14px;
+  background: var(--gray-950);
+  color: var(--white);
+}
+
+.thinkingSummary > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 13px 10px;
+}
+
+.thinkingSummary > div + div {
+  border-left: 1px solid var(--gray-700);
+}
+
+.thinkingSummary span {
+  color: var(--gray-400);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thinkingSummary strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.overviewSection {
+  margin-bottom: 20px;
+}
+
+.overviewHeading,
+.workQueueHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.overviewHeading > div,
+.workQueueHeading > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.overviewHeading span,
+.workQueueHeading > div:first-child span {
+  color: var(--gray-600);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.overviewHeading h2,
+.workQueueHeading h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.025em;
+}
+
+.overviewHeading > svg {
+  width: 17px;
+  height: 17px;
+  color: var(--gray-600);
+}
+
+.overviewHeading > button {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--gray-700);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.swipeRow {
+  min-width: 0;
+  flex: 0 0 auto;
+  border-radius: 13px;
+}
+
+.noteCard {
+  min-width: 0;
+  overflow: hidden;
+  padding: 15px;
+  border-radius: 12px;
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 23px,
+    var(--paper-line) 23px,
+    var(--paper-line) 24px
+  );
+  background-position: 0 51px;
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.noteCard > * {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.noteCard h2,
+.noteCard > p {
+  overflow-wrap: anywhere;
+}
+
+.noteCard > p {
+  margin-bottom: 15px;
+}
+
+.noteCardFooter {
+  border-color: rgba(113, 102, 47, 0.18);
+}
+
+.compactNotes {
+  display: grid;
+  gap: 8px;
+}
+
+.compactSwipeRow {
+  border-color: #d7cfaa;
+}
+
+.compactNoteCard {
+  padding: 13px 14px 11px;
+}
+
+.compactNoteCard > p {
+  margin: 5px 0 9px;
+  -webkit-line-clamp: 1;
+}
+
+.compactNoteCard .noteCardFooter {
+  padding-top: 8px;
+}
+
+.shapePrompt {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+  padding: 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: 12px;
+  background: var(--white);
+}
+
+.shapePromptIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.shapePromptIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.shapePrompt > div:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.shapePrompt span {
+  color: var(--gray-600);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.shapePrompt strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shapePrompt p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--gray-600);
+  font-size: 10px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.shapePrompt > button {
+  padding: 7px 9px;
+  border: 1px solid var(--gray-900);
+  border-radius: 8px;
+  background: var(--gray-900);
+  color: var(--white);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.imagePlaceholder {
+  border-radius: 9px;
+  background: #f8f3d8;
+}
+
+.imagePlaceholder svg,
+.imagePlaceholder span {
+  background: #f8f3d8;
+}
+
+.compactHeader {
+  padding-inline: 14px;
+}
+
+.noteDetailScroll {
+  padding: 0 15px 154px;
+}
+
+.detailContext {
+  padding: 14px 2px 9px;
+}
+
+.noteDetailActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.noteDetailActions button,
+.taskQuickActions button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--gray-300);
+  border-radius: 9px;
+  background: var(--white);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.noteDetailActions button:first-child {
+  border-color: var(--gray-900);
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.noteDetailActions svg,
+.taskQuickActions svg {
+  width: 15px;
+  height: 15px;
+}
+
+.notePaper {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #d8d0a9;
+  border-radius: 12px;
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    var(--paper-line) 27px,
+    var(--paper-line) 28px
+  );
+  background-position: 0 89px;
+}
+
+.paperBinding {
+  display: flex;
+  gap: 16px;
+  padding: 11px 17px 7px;
+  border-bottom: 1px solid rgba(113, 102, 47, 0.16);
+}
+
+.paperBinding span {
+  width: 5px;
+  height: 5px;
+  border: 1px solid #9d9364;
+  border-radius: 50%;
+  background: var(--gray-50);
+}
+
+.noteEditor {
+  min-height: 440px;
+  padding: 18px 17px 28px;
+}
+
+.noteEditor:focus {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.noteEditor h1 {
+  margin-bottom: 24px;
+  font-size: 30px;
+}
+
+.noteEditor p {
+  margin-bottom: 20px;
+  color: var(--gray-900);
+  font-size: 15px;
+  line-height: 1.78;
+}
+
+.notePaperFooter {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 17px;
+  border-top: 1px solid rgba(113, 102, 47, 0.16);
+  color: var(--gray-600);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.editorToolbar {
+  right: 14px;
+  left: 14px;
+  height: 52px;
+  padding: 5px;
+  border-radius: 12px;
+}
+
+.editorToolbar .iconButton {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.attachedNote,
+.chatComposer,
+.assistantIcon {
+  border-radius: 11px;
+}
+
+.humanBubble {
+  border-radius: 13px 13px 4px 13px;
+}
+
+.deliveryOverview {
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid var(--gray-800);
+  border-radius: 13px;
+  background: var(--gray-950);
+  color: var(--white);
+}
+
+.deliveryHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.deliveryHeader > div {
+  display: grid;
+  gap: 2px;
+}
+
+.deliveryHeader span {
+  color: var(--gray-400);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.deliveryHeader strong {
+  font-size: 16px;
+}
+
+.deliveryHeader b {
+  font-size: 24px;
+  letter-spacing: -0.05em;
+}
+
+.deliveryOverview .progressTrack {
+  background: var(--gray-700);
+}
+
+.deliveryOverview .progressTrack span {
+  background: var(--white);
+}
+
+.deliveryFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 13px;
+  border-top: 1px solid var(--gray-700);
+}
+
+.deliveryFacts > div {
+  display: grid;
+  gap: 2px;
+  padding: 11px 8px 0 0;
+}
+
+.deliveryFacts strong {
+  font-size: 13px;
+}
+
+.deliveryFacts span {
+  color: var(--gray-400);
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.attentionItem {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 28px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 20px;
+  padding: 10px;
+  border: 1px solid #d7cfaa;
+  border-radius: 11px;
+  background: var(--paper);
+  cursor: pointer;
+  text-align: left;
+}
+
+.attentionIcon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #a39a6f;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.attentionItem > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.attentionItem strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attentionItem div span {
+  color: var(--gray-600);
+  font-size: 9px;
+}
+
+.attentionItem > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.workQueueHeading {
+  align-items: center;
+}
+
+.queueFilters {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--gray-300);
+  border-radius: 9px;
+  background: var(--gray-150);
+}
+
+.queueFilters button {
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gray-600);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.queueFilters button.activeQueueFilter {
+  background: var(--white);
+  color: var(--black);
+}
+
+.taskHomeScroll .taskList {
+  min-height: auto;
+  flex: none;
+  gap: 7px;
+  overflow: visible;
+  padding: 0;
+}
+
+.taskCard {
+  min-width: 0;
+  overflow: hidden;
+  padding: 13px;
+  border-radius: 11px;
+}
+
+.taskCardTop {
+  gap: 5px;
+  margin-bottom: 9px;
+}
+
+.taskCardTop > svg {
+  width: 15px;
+  height: 15px;
+}
+
+.issueKey,
+.priority,
+.lane {
+  padding: 4px 6px;
+  border: 1px solid var(--gray-300);
+  border-radius: 5px;
+  background: var(--gray-100);
+  color: var(--gray-700);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.issueKey {
+  border-color: var(--gray-900);
+  background: var(--gray-900);
+  color: var(--white);
+}
+
+.lane {
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskCard h2,
+.taskCard > p {
+  overflow-wrap: anywhere;
+}
+
+.taskCard > p {
+  margin-bottom: 10px;
+  -webkit-line-clamp: 1;
+}
+
+.devMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  color: var(--gray-600);
+}
+
+.devMeta span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  font-size: 8px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devMeta span:first-child {
+  flex: 1;
+}
+
+.devMeta svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.progressLabel {
+  margin-top: 10px;
+}
+
+.taskDetailScroll {
+  padding-inline: 14px;
+}
+
+.taskHero {
+  margin: 10px 0;
+  padding: 15px;
+  border: 1px solid var(--gray-300);
+  border-radius: 12px;
+  background: var(--white);
+}
+
+.taskDetailFlags {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.taskDetailFlags span {
+  padding: 4px 6px;
+  border: 1px solid var(--gray-300);
+  border-radius: 5px;
+  background: var(--gray-100);
+  color: var(--gray-700);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.taskDetailFlags span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  margin-left: auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskHero h1 {
+  font-size: 28px;
+}
+
+.taskQuickActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.contextGrid,
+.detailSection,
+.agentNote {
+  border-radius: 12px;
+}
+
+.contextGrid > div {
+  padding: 12px;
+}
+
+.stackList span {
+  border-radius: 6px;
+}
+
+.subtask {
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.subtask:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.agentNote button {
+  border-radius: 8px;
+}
+
+.tabBar {
+  height: 58px;
+  border-radius: 16px;
+}
+
+.tabIndicator {
+  border-radius: 11px;
+  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tabBar button {
+  transition: color 380ms ease;
+}
+
+.prototypeHint {
+  border-radius: 12px;
+}
+
+@keyframes screenEnterFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes screenEnterFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes screenEnter {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes messageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 760px) {
+  .stage {
+    display: block;
+    background: var(--gray-50);
+  }
+
+  .phone {
+    width: 100vw;
+    height: 100svh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .prototypeHint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen,
+  .humanBubble {
+    animation: none;
+  }
+
+  .tabIndicator,
+  .noteCard {
+    transition: none;
+  }
+}
