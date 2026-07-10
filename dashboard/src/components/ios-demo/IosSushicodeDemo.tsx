@@ -11,7 +11,6 @@ import BatteryFullRoundedIcon from "@mui/icons-material/BatteryFullRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
 import DonutLargeRoundedIcon from "@mui/icons-material/DonutLargeRounded";
 import FormatBoldRoundedIcon from "@mui/icons-material/FormatBoldRounded";
 import FormatItalicRoundedIcon from "@mui/icons-material/FormatItalicRounded";
@@ -27,7 +26,6 @@ import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import SignalCellularAltRoundedIcon from "@mui/icons-material/SignalCellularAltRounded";
 import StorageOutlinedIcon from "@mui/icons-material/StorageOutlined";
 import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
-import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import WifiRoundedIcon from "@mui/icons-material/WifiRounded";
 import styles from "./IosSushicodeDemo.module.css";
 
@@ -51,8 +49,11 @@ type Subtask = {
 };
 type ProjectTask = {
   id: string;
+  key: string;
   title: string;
   summary: string;
+  lane: "In progress" | "Review" | "Queued";
+  priority: "P0" | "P1" | "P2";
   progress: number;
   scope: string;
   stack: string[];
@@ -136,8 +137,11 @@ const initialNotes: Note[] = [
 const projectTasks: ProjectTask[] = [
   {
     id: "ios-companion",
+    key: "IOS-142",
     title: "iOS companion experience",
     summary: "Ship the mobile context, notes, and intervention loop.",
+    lane: "In progress",
+    priority: "P0",
     progress: 68,
     scope: "Notes inbox, note-to-prompt handoff, task context, and safe agent intervention.",
     stack: ["Next.js", "React", "Supabase", "Agent API"],
@@ -156,8 +160,11 @@ const projectTasks: ProjectTask[] = [
   },
   {
     id: "project-memory",
+    key: "MEM-86",
     title: "Project memory pipeline",
     summary: "Turn unstructured notes into durable, inspectable context.",
+    lane: "Review",
+    priority: "P0",
     progress: 43,
     scope: "Classify notes, preserve source context, and attach decisions to project entities.",
     stack: ["Postgres", "Embeddings", "Workers"],
@@ -175,8 +182,11 @@ const projectTasks: ProjectTask[] = [
   },
   {
     id: "deploy-bridge",
+    key: "INF-219",
     title: "Deployment context bridge",
     summary: "Explain environment health and agent actions in human terms.",
+    lane: "In progress",
+    priority: "P1",
     progress: 86,
     scope: "Environment summaries, deploy state, risk flags, and reversible intervention controls.",
     stack: ["Cloudflare", "GitHub", "OpenTelemetry"],
@@ -194,8 +204,11 @@ const projectTasks: ProjectTask[] = [
   },
   {
     id: "voice-capture",
+    key: "IOS-157",
     title: "Voice idea capture",
     summary: "Capture a thought quickly and keep the transcript editable.",
+    lane: "Queued",
+    priority: "P2",
     progress: 21,
     scope: "Streaming transcription, note cleanup suggestions, and source audio retention.",
     stack: ["Web Audio", "Whisper", "Storage"],
@@ -367,6 +380,51 @@ export function IosSushicodeDemo() {
     setChatInput("");
   }
 
+  function openNoteInChat(note: Note) {
+    setChatNoteId(note.id);
+    setChatMessages([]);
+    setSelectedNoteId(null);
+  }
+
+  function renderSwipeNote(note: Note, compact = false) {
+    const swipeX = swipe?.id === note.id ? swipe.x : 0;
+    return (
+      <div
+        className={`${styles.swipeRow} ${compact ? styles.compactSwipeRow : ""}`}
+        key={note.id}
+      >
+        <div className={styles.swipeHint} aria-hidden="true">
+          <AutoAwesomeRoundedIcon />
+          <span>Prompt</span>
+        </div>
+        <button
+          className={`${styles.noteCard} ${compact ? styles.compactNoteCard : ""}`}
+          onClick={() => {
+            if (!suppressClickRef.current) setSelectedNoteId(note.id);
+          }}
+          onPointerCancel={() => endSwipe(note)}
+          onPointerDown={(event) => beginSwipe(event, note)}
+          onPointerMove={(event) => moveSwipe(event, note)}
+          onPointerUp={() => endSwipe(note)}
+          style={{ transform: `translateX(${swipeX}px)` }}
+          type="button"
+        >
+          <div className={styles.noteCardTop}>
+            <span>{note.context}</span>
+            <span>{note.time}</span>
+          </div>
+          <h2>{note.title}</h2>
+          <p>{note.excerpt}</p>
+          {note.image && !compact ? <ImagePlaceholder /> : null}
+          <div className={styles.noteCardFooter}>
+            <span>{compact ? "Open note" : "Swipe right to prompt"}</span>
+            <ChevronRightRoundedIcon />
+          </div>
+        </button>
+      </div>
+    );
+  }
+
   function renderNotesHome() {
     return (
       <>
@@ -394,50 +452,76 @@ export function IosSushicodeDemo() {
           ))}
         </nav>
 
-        <div className={styles.listMeta}>
-          <span>{visibleNotes.length} notes</span>
-          <span>
-            <AccessTimeRoundedIcon /> Latest context first
-          </span>
-        </div>
+        {temporalFilter === "overview" ? (
+          <div className={styles.notesOverview}>
+            <section className={styles.thinkingSummary}>
+              <div>
+                <span>Today</span>
+                <strong>2 new thoughts</strong>
+              </div>
+              <div>
+                <span>Ready to shape</span>
+                <strong>2 notes</strong>
+              </div>
+              <div>
+                <span>Needs decision</span>
+                <strong>1 item</strong>
+              </div>
+            </section>
 
-        <div className={styles.noteList}>
-          {visibleNotes.map((note) => {
-            const swipeX = swipe?.id === note.id ? swipe.x : 0;
-            return (
-              <div className={styles.swipeRow} key={note.id}>
-                <div className={styles.swipeHint} aria-hidden="true">
-                  <AutoAwesomeRoundedIcon />
-                  <span>Ask AI</span>
+            <section className={styles.overviewSection}>
+              <div className={styles.overviewHeading}>
+                <div>
+                  <span>Continue thinking</span>
+                  <h2>Most relevant now</h2>
                 </div>
-                <button
-                  className={styles.noteCard}
-                  onClick={() => {
-                    if (!suppressClickRef.current) setSelectedNoteId(note.id);
-                  }}
-                  onPointerCancel={() => endSwipe(note)}
-                  onPointerDown={(event) => beginSwipe(event, note)}
-                  onPointerMove={(event) => moveSwipe(event, note)}
-                  onPointerUp={() => endSwipe(note)}
-                  style={{ transform: `translateX(${swipeX}px)` }}
-                  type="button"
-                >
-                  <div className={styles.noteCardTop}>
-                    <span>{note.context}</span>
-                    <span>{note.time}</span>
-                  </div>
-                  <h2>{note.title}</h2>
-                  <p>{note.excerpt}</p>
-                  {note.image ? <ImagePlaceholder /> : null}
-                  <div className={styles.noteCardFooter}>
-                    <span>Swipe right to prompt</span>
-                    <ChevronRightRoundedIcon />
-                  </div>
+                <AccessTimeRoundedIcon />
+              </div>
+              {renderSwipeNote(notes[0])}
+            </section>
+
+            <section className={styles.shapePrompt}>
+              <div className={styles.shapePromptIcon}>
+                <AutoAwesomeRoundedIcon />
+              </div>
+              <div>
+                <span>Ready to shape</span>
+                <strong>{notes[2].title}</strong>
+                <p>Convert this thought while its original context is still fresh.</p>
+              </div>
+              <button onClick={() => openNoteInChat(notes[2])} type="button">
+                Prompt
+              </button>
+            </section>
+
+            <section className={styles.overviewSection}>
+              <div className={styles.overviewHeading}>
+                <div>
+                  <span>Recent context</span>
+                  <h2>Keep close</h2>
+                </div>
+                <button onClick={() => setTemporalFilter("month")} type="button">
+                  View all
                 </button>
               </div>
-            );
-          })}
-        </div>
+              <div className={styles.compactNotes}>
+                {notes.slice(1, 4).map((note) => renderSwipeNote(note, true))}
+              </div>
+            </section>
+          </div>
+        ) : (
+          <>
+            <div className={styles.listMeta}>
+              <span>{visibleNotes.length} notes</span>
+              <span>
+                <AccessTimeRoundedIcon /> Latest context first
+              </span>
+            </div>
+            <div className={styles.noteList}>
+              {visibleNotes.map((note) => renderSwipeNote(note))}
+            </div>
+          </>
+        )}
       </>
     );
   }
@@ -457,19 +541,41 @@ export function IosSushicodeDemo() {
         <div className={styles.noteDetailScroll}>
           <div className={styles.detailContext}>
             <span>{note.context}</span>
-            <span>Edited {note.time} ago</span>
+            <span>Edited {note.time}</span>
           </div>
-          <div
-            className={styles.noteEditor}
-            contentEditable
-            suppressContentEditableWarning
-          >
-            <h1>{note.title}</h1>
-            {note.body.map((paragraph) => (
-              <p key={paragraph}>{paragraph}</p>
-            ))}
-            {note.image ? <ImagePlaceholder /> : null}
+          <div className={styles.noteDetailActions}>
+            <button onClick={() => openNoteInChat(note)} type="button">
+              <AutoAwesomeRoundedIcon />
+              Use in prompt
+            </button>
+            <button type="button">
+              <AttachFileRoundedIcon />
+              Add context
+            </button>
           </div>
+          <article className={styles.notePaper}>
+            <div className={styles.paperBinding} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+            <div
+              className={styles.noteEditor}
+              contentEditable
+              suppressContentEditableWarning
+            >
+              <h1>{note.title}</h1>
+              {note.body.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
+              {note.image ? <ImagePlaceholder /> : null}
+            </div>
+            <footer className={styles.notePaperFooter}>
+              <span>{note.body.join(" ").split(" ").length} words</span>
+              <span>Auto-saved</span>
+            </footer>
+          </article>
         </div>
         <div className={styles.editorToolbar} aria-label="Rich text formatting">
           <IconButton
@@ -590,52 +696,94 @@ export function IosSushicodeDemo() {
       <>
         <header className={styles.largeHeader}>
           <div>
-            <p className={styles.eyebrow}>Live agent work</p>
-            <h1>Progress</h1>
+            <p className={styles.eyebrow}>Sushicode delivery</p>
+            <h1>Work</h1>
           </div>
           <div className={styles.liveBadge}>
             <span />
             3 active
           </div>
         </header>
-        <div className={styles.progressSummary}>
-          <div>
-            <strong>4</strong>
-            <span>Workstreams</span>
-          </div>
-          <div>
-            <strong>61%</strong>
-            <span>Overall</span>
-          </div>
-          <div>
-            <strong>2</strong>
-            <span>Need you</span>
-          </div>
-        </div>
-        <div className={styles.taskList}>
-          {projectTasks.map((task) => (
-            <button
-              className={styles.taskCard}
-              key={task.id}
-              onClick={() => setSelectedTaskId(task.id)}
-              type="button"
-            >
-              <div className={styles.taskCardTop}>
-                <span className={styles.taskGlyph}>
-                  <CodeRoundedIcon />
-                </span>
-                <span>{task.updated}</span>
-                <ChevronRightRoundedIcon />
+
+        <div className={styles.taskHomeScroll}>
+          <section className={styles.deliveryOverview}>
+            <div className={styles.deliveryHeader}>
+              <div>
+                <span>Delivery pulse</span>
+                <strong>On track</strong>
               </div>
-              <h2>{task.title}</h2>
-              <p>{task.summary}</p>
-              <div className={styles.progressLabel}>
-                <span>Progress</span>
-                <strong>{task.progress}%</strong>
+              <b>61%</b>
+            </div>
+            <ProgressBar value={61} />
+            <div className={styles.deliveryFacts}>
+              <div>
+                <strong>3</strong>
+                <span>Building</span>
               </div>
-              <ProgressBar value={task.progress} />
-            </button>
-          ))}
+              <div>
+                <strong>2</strong>
+                <span>Need input</span>
+              </div>
+              <div>
+                <strong>Jul 11</strong>
+                <span>Next ship</span>
+              </div>
+            </div>
+          </section>
+
+          <button
+            className={styles.attentionItem}
+            onClick={() => setSelectedTaskId("project-memory")}
+            type="button"
+          >
+            <span className={styles.attentionIcon}>!</span>
+            <div>
+              <strong>Retention rules need your decision</strong>
+              <span>MEM-86 · Blocking context backfill</span>
+            </div>
+            <ChevronRightRoundedIcon />
+          </button>
+
+          <div className={styles.workQueueHeading}>
+            <div>
+              <span>Execution queue</span>
+              <h2>Work items</h2>
+            </div>
+            <div className={styles.queueFilters}>
+              <button className={styles.activeQueueFilter} type="button">All</button>
+              <button type="button">Active</button>
+              <button type="button">Review</button>
+            </div>
+          </div>
+
+          <div className={styles.taskList}>
+            {projectTasks.map((task) => (
+              <button
+                className={styles.taskCard}
+                key={task.id}
+                onClick={() => setSelectedTaskId(task.id)}
+                type="button"
+              >
+                <div className={styles.taskCardTop}>
+                  <span className={styles.issueKey}>{task.key}</span>
+                  <span className={styles.priority}>{task.priority}</span>
+                  <span className={styles.lane}>{task.lane}</span>
+                  <ChevronRightRoundedIcon />
+                </div>
+                <h2>{task.title}</h2>
+                <p>{task.summary}</p>
+                <div className={styles.devMeta}>
+                  <span><HubOutlinedIcon /> {task.branch}</span>
+                  <span><AccessTimeRoundedIcon /> {task.ship}</span>
+                </div>
+                <div className={styles.progressLabel}>
+                  <span>{task.updated}</span>
+                  <strong>{task.progress}%</strong>
+                </div>
+                <ProgressBar value={task.progress} />
+              </button>
+            ))}
+          </div>
         </div>
       </>
     );
@@ -648,29 +796,38 @@ export function IosSushicodeDemo() {
           <IconButton label="Back to progress" onClick={() => setSelectedTaskId(null)}>
             <ArrowBackIosNewRoundedIcon />
           </IconButton>
-          <span>Workstream</span>
+          <span>{task.key}</span>
           <IconButton label="More task options">
             <MoreHorizRoundedIcon />
           </IconButton>
         </header>
         <div className={styles.taskDetailScroll}>
           <section className={styles.taskHero}>
-            <div className={styles.taskHeroIcon}>
-              <TerminalRoundedIcon />
+            <div className={styles.taskDetailFlags}>
+              <span>{task.lane}</span>
+              <span>{task.priority}</span>
+              <span>{task.updated}</span>
             </div>
-            <p className={styles.eyebrow}>In progress · {task.updated}</p>
             <h1>{task.title}</h1>
             <p>{task.summary}</p>
             <div className={styles.heroProgress}>
               <ProgressBar value={task.progress} />
               <strong>{task.progress}%</strong>
             </div>
+            <div className={styles.taskQuickActions}>
+              <button type="button">
+                <HubOutlinedIcon /> Open branch
+              </button>
+              <button type="button">
+                <AutoAwesomeRoundedIcon /> Add context
+              </button>
+            </div>
           </section>
 
           <section className={styles.contextGrid}>
             <div className={styles.fullContext}>
               <LightbulbOutlinedIcon />
-              <span>Scope</span>
+              <span>Definition of done</span>
               <p>{task.scope}</p>
             </div>
             <div>
@@ -699,7 +856,7 @@ export function IosSushicodeDemo() {
 
           <section className={styles.detailSection}>
             <div className={styles.sectionHeading}>
-              <h2>Execution</h2>
+              <h2>Subtasks</h2>
               <span>
                 {task.subtasks.filter((subtask) => subtask.status === "done").length}/
                 {task.subtasks.length} done
@@ -749,7 +906,12 @@ export function IosSushicodeDemo() {
     <div className={styles.stage}>
       <div className={styles.phone}>
         <StatusBar />
-        <div className={styles.screen} key={screenKey}>
+        <div
+          className={`${styles.screen} ${
+            activeTab === "progress" ? styles.screenProgress : styles.screenNotes
+          }`}
+          key={screenKey}
+        >
           {activeTab === "notes"
             ? chatNote
               ? renderChat(chatNote)
